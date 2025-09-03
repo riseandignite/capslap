@@ -1,0 +1,62 @@
+appId: com.capslap.app
+productName: CapSlap
+directories:
+  buildResources: resources/build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+  - '**/*.mp4'
+win:
+  executableName: CapSlap
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  artifactName: CapSlap-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  identity: 'CapSlap Developer'
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: 'resources/build/entitlements.mac.plist'
+  entitlementsInherit: 'resources/build/entitlements.mac.inherit.plist'
+dmg:
+  artifactName: CapSlap-${version}-mac.${ext}
+  title: ${productName} ${version}
+  contents:
+    - x: 410
+      y: 150
+      type: link
+      path: /Applications
+    - x: 130
+      y: 150
+      type: file
+linux:
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: electronjs.org
+  category: Utility
+appImage:
+  artifactName: CapSlap-${version}-linux.${ext}
+npmRebuild: false
+# Отключаем автопубликацию для локальной сборки
+publish: null

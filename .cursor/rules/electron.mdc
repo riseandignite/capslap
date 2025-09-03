@@ -1,0 +1,8 @@
+---
+description: Electron rules
+globs: electron/**
+alwaysApply: false
+---
+
+- we use bun, shadcn, tailwind, react, typescript, vite, etc.
+- we use linear.app design aesthetic: best in the world ux, modern, clean, minimal, etc.

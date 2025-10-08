@@ -1,24 +1,65 @@
-# Prerequisites
+# CapSlap - AI Video Caption Generator
 
-1. Install FFmpeg and ensure it's in your PATH
+Automatically generate and burn captions into videos using AI transcription.
 
-   - macOS: `brew install ffmpeg`
-   - Windows: Download from https://ffmpeg.org/
+## Prerequisites
 
-2. Install Rust: https://rustup.rs/
+- **Rust**: https://rustup.rs/
+- **Bun**: https://bun.sh/
+- **FFmpeg** (auto-installed on macOS)
 
-3. Install Bun: https://bun.sh/
+## Quick Start
 
-# Setup Steps
+1. **Clone the repository**
 
-1. Clone the repository
-2. Build Rust backend: `cd rust && cargo build`
-3. Install Electron dependencies: `cd electron && bun install`
-4. Run the app: `bun run dev`
-5. Get an OpenAI API key and enter it in the app's settings
+   ```bash
+   git clone <repository-url>
+   cd capslap
+   ```
 
-# Additional Notes
+2. **Build Rust core**
 
-- An OpenAI API key is required for transcription functionality
-- The app uses OpenAI's Whisper API for audio-to-text conversion
-- FFmpeg is used for video processing and subtitle rendering
+   ```bash
+   cd rust
+   cargo build
+   cd ..
+   ```
+
+3. **Install Electron dependencies**
+
+   ```bash
+   cd electron
+   bun install
+   ```
+
+   FFmpeg will be automatically downloaded on macOS during `bun install`.
+
+4. **Run the app**
+
+   ```bash
+   bun run dev
+   ```
+
+## Whisper Models
+
+Local whisper models can be downloaded directly through the app UI, or manually:
+
+```bash
+mkdir -p rust/models
+
+# Tiny model (fastest, 75 MB)
+curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin \
+  -o rust/models/ggml-tiny.bin
+
+# Base model (recommended, 142 MB)
+curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin \
+  -o rust/models/ggml-base.bin
+```
+
+Alternatively, use OpenAI API (requires API key) without downloading models.
+
+## Platform-Specific Notes
+
+### macOS
+
+FFmpeg is automatically downloaded during `bun install` via the postinstall script.

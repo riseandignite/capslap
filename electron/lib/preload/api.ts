@@ -27,9 +27,20 @@ const rust = {
     try {
       return webUtils.getPathForFile(file)
     } catch (error) {
-      console.error('Error getting file path:', error)
       return null
     }
+  },
+  downloadModel: (model: string) => {
+    return ipcRenderer.invoke('core:call', {
+      method: 'downloadModel',
+      params: { model }
+    })
+  },
+  checkModelExists: (model: string) => {
+    return ipcRenderer.invoke('core:call', {
+      method: 'checkModelExists',
+      params: model
+    })
   },
 }
 

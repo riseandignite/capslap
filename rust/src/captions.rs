@@ -207,7 +207,12 @@ async fn optimized_single_format_encode(
     };
     let gop_size_str = gop_size.to_string();
 
-    let status = Command::new("ffmpeg")
+    // Resolve FFmpeg path using unified async detector (bundled > project > system)
+    let ffmpeg_path = crate::whisper::find_ffmpeg_binary()
+        .await
+        .map_err(|e| anyhow!("FFmpeg not found: {}", e))?;
+
+    let status = Command::new(ffmpeg_path)
         .args({
             let mut args = vec![
                 "-y", "-i", input_video,

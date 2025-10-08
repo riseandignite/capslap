@@ -62,6 +62,20 @@ async fn handle_request(r: RpcRequest) {
                 Err(e) => write_err(e.to_string()),
             }
         }
+        "downloadModel" => {
+            let p: core::types::DownloadModelParams = serde_json::from_value(r.params).unwrap();
+            match core::whisper::download_model_rpc(&id, p, &mut emit).await {
+                Ok(v) => write_ok(serde_json::to_value(v).unwrap()),
+                Err(e) => write_err(e.to_string()),
+            }
+        }
+        "checkModelExists" => {
+            let model_name: String = serde_json::from_value(r.params).unwrap();
+            match core::whisper::check_model_exists(&model_name) {
+                Ok(exists) => write_ok(serde_json::to_value(exists).unwrap()),
+                Err(e) => write_err(e.to_string()),
+            }
+        }
         _ => write_err("Unknown method".into()),
     }
 }

@@ -2,7 +2,7 @@
 [package]
 name = "core"
 version = "1.0.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 anyhow = "1"
@@ -15,6 +15,7 @@ regex = "1"
 blake3 = "1"
 time = "0.3"
 reqwest = { version = "0.12", features = ["json", "multipart", "gzip", "brotli", "deflate", "stream", "rustls-tls"] }
+futures-util = "0.3"
 mime_guess = "2"
 which = "8.0.0"
 hex_color = "3.0.0"

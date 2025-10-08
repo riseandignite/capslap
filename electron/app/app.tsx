@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Upload, Film, Download, Cog, Trash, Zap, Settings, FileVideo, Key, Palette } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TitleBar } from './components/TitleBar'
+import { ModelDownloader } from './components/ModelDownloader'
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import {
   DialogClose,
 } from '@/app/components/ui/dialog'
 import { Input } from './components/ui/input'
+import { ModelInfo } from '@/lib/preload'
 
 const getVideoPath = (filename: string) => {
   if (import.meta.env.DEV) {
@@ -23,6 +25,78 @@ const getVideoPath = (filename: string) => {
   }
 
   return `res://videos/${filename}`
+}
+
+// Function to display user-friendly errors
+const showErrorToast = (error: any, count: number = 1) => {
+  const countText = count > 1 ? ` (${count} videos)` : ''
+
+  switch (error.name) {
+    case 'API_KEY_MISSING':
+      toast.error('🔑 API Key Not Configured', {
+        description: 'Add OpenAI API key in settings for better transcription quality.',
+        action: {
+          label: 'Settings',
+          onClick: () => {
+            // Will open API key settings
+          },
+        },
+      })
+      break
+
+    case 'API_KEY_INVALID':
+      toast.error('🔑 Invalid API Key', {
+        description: 'Please check your OpenAI API key in settings.',
+      })
+      break
+
+    case 'NO_LOCAL_MODELS':
+      toast.warning('📥 Using Online Transcription', {
+        description: 'Local models not found. Transcription performed via OpenAI API.',
+      })
+      break
+
+    case 'BINARY_NOT_FOUND':
+      toast.error('⚙️ System Error', {
+        description: 'Application components not found. Try reinstalling CapSlap.',
+      })
+      break
+
+    case 'BINARY_DEP_MISSING':
+      toast.error('🧩 Missing System Libraries', {
+        description: 'Media tools require static ffmpeg/ffprobe builds. Please reinstall or contact support.',
+      })
+      break
+
+    case 'NETWORK_ERROR':
+      toast.error('🌐 Internet Connection Problem', {
+        description: 'Check your network connection and try again.',
+      })
+      break
+
+    case 'RATE_LIMIT':
+      toast.error('⏰ Rate Limit Exceeded', {
+        description: 'Too many requests to OpenAI API. Try again later.',
+      })
+      break
+
+    case 'QUOTA_EXCEEDED':
+      toast.error('💳 API Quota Exhausted', {
+        description: 'Top up your OpenAI balance or use local models.',
+      })
+      break
+
+    case 'FILE_NOT_FOUND':
+      toast.error('📁 File Not Found', {
+        description: 'Make sure the video file exists and is accessible.',
+      })
+      break
+
+    default:
+      toast.error(`❌ Error${countText}`, {
+        description: error.message || 'An unexpected error occurred. Please try again.',
+      })
+  }
 }
 
 interface Template {
@@ -42,6 +116,7 @@ interface Settings {
   selectedTemplate: Template['id']
   exportFormats: string[]
   selectedFont: string
+  selectedModel: ModelInfo['name']
   textColor: string
   highlightWordColor: string
   outlineColor: string
@@ -54,6 +129,7 @@ const defaultSettings: Settings = {
   selectedTemplate: 'karaoke',
   exportFormats: ['9:16'],
   selectedFont: 'montserrat-black',
+  selectedModel: 'whisper-1',
   textColor: '#ffffff',
   highlightWordColor: '#ffff00',
   outlineColor: '#000000',
@@ -212,7 +288,11 @@ function SettingsModal({
   onOpenChange: (open: boolean) => void
   apiKey: string
 }) {
-  const [apiKeyState, setApiKeyState] = useState(apiKey || '')
+  const [apiKeyState, setApiKeyState] = useState(apiKey)
+
+  useEffect(() => {
+    setApiKeyState(apiKey)
+  }, [apiKey])
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -372,7 +452,7 @@ export default function App() {
         setSelectedVideos((prev) => [...prev, ...pathsWithoutDuplicates])
       }
     } catch (error) {
-      console.error('File picker error:', error)
+      // Silent error handling
     }
   }
 
@@ -401,7 +481,7 @@ export default function App() {
       return
     }
 
-    if (!apiKey) {
+    if (!apiKey && videoSettings.selectedModel === 'whisper-1') {
       setShouldGenerateAfterApiKey(true)
       setIsApiKeySettingsOpen(true)
       return
@@ -418,7 +498,7 @@ export default function App() {
             karaoke: videoSettings.captionStyle === 'karaoke',
             fontName: getFontName(videoSettings.selectedFont),
             splitByWords: true,
-            model: 'whisper-1',
+            model: videoSettings.selectedModel,
             language: null,
             prompt: null,
             textColor: videoSettings.textColor,
@@ -439,15 +519,23 @@ export default function App() {
       }
 
       if (failed.length > 0) {
-        toast.error(`Failed to generate ${failed.length} videos`, {
-          description: failed.map((f) => f.reason).join(', '),
-        })
+        // Группируем ошибки по типам для лучшего UX
+        const errors = failed.map((f) => f.reason)
+        const uniqueErrors = [...new Set(errors.map((err) => err.name || 'UNKNOWN_ERROR'))]
+
+        if (uniqueErrors.length === 1) {
+          // Одинаковый тип ошибки для всех файлов
+          const sampleError = errors[0]
+          showErrorToast(sampleError, failed.length)
+        } else {
+          // Different error types
+          toast.error(`Failed to process ${failed.length} videos`, {
+            description: 'Mixed errors occurred. Check settings and try again.',
+          })
+        }
       }
     } catch (error: any) {
-      console.error('Generation error:', error)
-      toast.error('Error generating video', {
-        description: error.message || 'An unexpected error occurred',
-      })
+      showErrorToast(error, 1)
     } finally {
       setIsGenerating(false)
     }
@@ -541,7 +629,7 @@ export default function App() {
           <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
             <div className="absolute inset-0 bg-[#08090a] backdrop-blur-md animate-in fade-in duration-300" />
 
-            <div className="relative z-10 flex flex-col items-center justify-center p-12 rounded-3xl border-2 border-dashed border-primary/60 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/20 backdrop-blur-xl animate-in zoom-in-95 fade-in duration-300 shadow-2xl">
+            <div className="relative z-10 flex flex-col items-center justify-center p-12 rounded-3xl border-2 border-dashed border-primary/70 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/20 backdrop-blur-xl animate-in zoom-in-95 fade-in duration-300 shadow-2xl">
               <div className="relative mb-8">
                 <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl animate-pulse" />
                 <div className="relative p-4 rounded-full bg-primary/20 border border-primary/30">
@@ -832,7 +920,7 @@ export default function App() {
                       className={cn(
                         'p-2 rounded-sm border text-center cursor-pointer transition-all duration-200 text-xs',
                         videoSettings.exportFormats?.includes(format.id)
-                          ? 'border-primary/60 text-primary'
+                          ? 'border-primary/70 text-primary'
                           : 'border-border/50 text-muted-foreground hover:border-primary/50'
                       )}
                       onClick={() => handleExportFormatToggle(format.id)}
@@ -842,6 +930,16 @@ export default function App() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Download Models */}
+            <div className="p-4 border-b border-border/50">
+              <ModelDownloader
+                selectedModel={videoSettings.selectedModel}
+                onSelectModel={(model: ModelInfo['name']) => updateSettings({ selectedModel: model })}
+                apiKey={apiKey}
+                onOpenApiKeySettings={() => setIsApiKeySettingsOpen(true)}
+              />
             </div>
           </div>
         </div>
@@ -854,7 +952,7 @@ export default function App() {
                 <div
                   className={cn(
                     'group max-w-2xl mx-auto relative h-full flex flex-col items-center justify-center p-12 rounded-2xl border-2 border-dashed transition-all duration-300 cursor-pointer',
-                    'hover:border-primary/60 hover:bg-primary/5',
+                    'hover:border-primary/70 hover:bg-primary/5',
                     isDragOver ? 'border-primary bg-primary/10 scale-[1.01]' : 'border-border/50 bg-card/30'
                   )}
                   onClick={handleVideoSelect}

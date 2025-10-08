@@ -1,7 +1,47 @@
 use crate::rpc::RpcEvent;
+use crate::whisper::{find_ffmpeg_binary, find_ffprobe_binary};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command as TokioCommand;
 use std::process::Command;
+
+/// Get FFmpeg binary path synchronously (for use in sync functions)
+fn get_ffmpeg_path_sync() -> String {
+    // Try to use cached path or default to "ffmpeg"
+    // In sync context, we can't use the full async detection
+    if let Ok(ffmpeg_path) = std::env::var("FFMPEG_PATH") {
+        return ffmpeg_path;
+    }
+
+    // Try bundled path next to the executable (production)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let bundled = exe_dir.join(if cfg!(target_os = "windows") {
+                "bin/ffmpeg.exe"
+            } else {
+                "bin/ffmpeg"
+            });
+            if bundled.exists() {
+                return bundled.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    // Try common paths
+    let paths = vec![
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+        "ffmpeg"
+    ];
+
+    for path in paths {
+        if std::path::Path::new(path).exists() || which::which(path).is_ok() {
+            return path.to_string();
+        }
+    }
+
+    "ffmpeg".to_string() // Fallback
+}
 
 /// Properly escape subtitle file paths for FFmpeg subtitle filter
 /// Handles Windows paths with drive letters and special characters
@@ -156,7 +196,6 @@ pub fn build_fitpad_filter_with_format(
         target_w, target_h
     ));
 
-    // TEMPORARILY ENABLED: Test subtitle rendering with different fonts
     if let Some(subtitle_path) = subtitle_path {
         let escaped_path = escape_subtitle_path(subtitle_path);
         // Use absolute path to fonts directory
@@ -221,10 +260,7 @@ pub fn determine_audio_codec(probe_result: Option<&crate::video::ProbeResult>) -
         "gsm" | "speex" => ("aac", vec!["-q:a", "2"]),
 
         // High-bitrate AAC or unknown codec - re-encode with VBR for quality parity
-        _ => {
-            eprintln!("Codec '{}' - re-encoding with VBR for optimal quality/size", codec);
-            ("aac", vec!["-q:a", "2"])
-        }
+        _ => ("aac", vec!["-q:a", "2"])
     }
 }
 
@@ -242,7 +278,7 @@ pub async fn is_videotoolbox_available() -> bool {
     }
 
     // Test if ffmpeg has h264_videotoolbox encoder available
-    let result = Command::new("ffmpeg")
+    let result = Command::new(get_ffmpeg_path_sync())
         .args(["-hide_banner", "-encoders"])
         .output();
 
@@ -259,7 +295,7 @@ pub async fn is_videotoolbox_available() -> bool {
 /// This function tests if ffmpeg supports h264_nvenc encoder
 pub async fn is_nvenc_available() -> bool {
     // Test if ffmpeg has h264_nvenc encoder available
-    let result = Command::new("ffmpeg")
+    let result = Command::new(get_ffmpeg_path_sync())
         .args(["-hide_banner", "-encoders"])
         .output();
 
@@ -269,6 +305,61 @@ pub async fn is_nvenc_available() -> bool {
             stdout.contains("h264_nvenc")
         }
         Err(_) => false,
+    }
+}
+
+/// Check if whisper.cpp CLI is available (preferred method)
+pub async fn is_whisper_cpp_available() -> bool {
+    // Use the new cross-platform whisper binary detection from whisper.rs
+    match crate::whisper::find_whisper_binary().await {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+/// Check if FFmpeg has built-in Whisper support (requires FFmpeg 8.0+)
+/// This function tests if ffmpeg supports the whisper audio filter
+pub async fn is_ffmpeg_whisper_available() -> bool {
+    // Test if ffmpeg has whisper filter available
+    let result = Command::new(get_ffmpeg_path_sync())
+        .args(["-hide_banner", "-filters"])
+        .output();
+
+    match result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Look for whisper filter in the audio filters list
+            stdout.contains("whisper")
+        }
+        Err(_) => false,
+    }
+}
+
+/// Get FFmpeg version to check if it's 8.0+ for Whisper support
+pub async fn get_ffmpeg_version() -> Option<String> {
+    let result = Command::new(get_ffmpeg_path_sync())
+        .args(["-version"])
+        .output();
+
+    match result {
+        Ok(output) => {
+            // FFmpeg -version outputs to stdout (not stderr like other commands)
+            let stdout = String::from_utf8_lossy(&output.stdout);
+
+            // Extract version from first line: "ffmpeg version 8.0.2 ..."
+            stdout.lines()
+                .next()
+                .and_then(|line| {
+                    // Split by whitespace and find "version" then get next word
+                    let words: Vec<&str> = line.split_whitespace().collect();
+                    if let Some(pos) = words.iter().position(|&word| word == "version") {
+                        words.get(pos + 1).map(|v| v.to_string())
+                    } else {
+                        None
+                    }
+                })
+        }
+        Err(_) => None,
     }
 }
 
@@ -468,7 +559,8 @@ pub async fn export_video(id: &str, p: ExportParams, mut emit: impl FnMut(RpcEve
         HardwareEncoder::Software
     };
 
-    let mut cmd = TokioCommand::new("ffmpeg");
+    let ffmpeg_path = find_ffmpeg_binary().await.map_err(|e| anyhow::anyhow!("FFmpeg not found: {}", e))?;
+    let mut cmd = TokioCommand::new(ffmpeg_path);
     cmd.arg("-y").arg("-i").arg(&p.input);
 
     // High-quality scaler settings
@@ -632,24 +724,66 @@ pub async fn export_video(id: &str, p: ExportParams, mut emit: impl FnMut(RpcEve
 
 // PROBE OPERATION - Analyze media file to get technical information
 // This is typically the first operation run on any video/audio file
-// Uses ffprobe (part of ffmpeg) to extract metadata without processing the file
+// Uses bundled ffprobe to extract metadata without processing the file
 pub async fn probe(id: &str, input: &str, mut emit: impl FnMut(RpcEvent)) -> anyhow::Result<ProbeResult> {
     emit(RpcEvent::Progress { id: id.into(), status: "Probing…".into(), progress: 0.05 });
 
-    // Run ffprobe command to get file information as JSON
-    let child = TokioCommand::new("ffprobe")
+    // Get bundled ffprobe path
+    let ffprobe_path = find_ffprobe_binary().await.map_err(|e| anyhow::anyhow!("ffprobe not found: {}", e))?;
+
+    emit(RpcEvent::Log {
+        id: id.into(),
+        message: format!("Found ffprobe at: {}", ffprobe_path)
+    });
+
+    emit(RpcEvent::Log {
+        id: id.into(),
+        message: format!("Probing input file: {}", input)
+    });
+
+    // Run ffprobe with proper arguments to get file information as JSON
+    let child = TokioCommand::new(&ffprobe_path)
         .arg("-v").arg("error")              // Only show errors, suppress info messages
         .arg("-print_format").arg("json")    // Output as JSON for easy parsing
         .arg("-show_streams")                // Include information about audio/video streams
         .arg("-show_format")                 // Include information about file format
         .arg(input)                          // The file to analyze
         .stdout(std::process::Stdio::piped()) // Capture the output
+        .stderr(std::process::Stdio::piped()) // Capture stderr for debugging
         .spawn()?;
+
+    emit(RpcEvent::Log {
+        id: id.into(),
+        message: format!("Running ffprobe command: {} -v error -print_format json -show_streams -show_format {}", ffprobe_path, input)
+    });
 
     // Wait for ffprobe to finish and get the output
     let out = child.wait_with_output().await?;
+
+    emit(RpcEvent::Log {
+        id: id.into(),
+        message: format!("ffprobe exit status: {}", out.status)
+    });
+
+    if !out.stderr.is_empty() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        emit(RpcEvent::Log {
+            id: id.into(),
+            message: format!("ffprobe stderr: {}", stderr)
+        });
+    }
+
+    if !out.stdout.is_empty() {
+        let stdout_preview = String::from_utf8_lossy(&out.stdout);
+        emit(RpcEvent::Log {
+            id: id.into(),
+            message: format!("ffprobe stdout preview: {}", stdout_preview.chars().take(200).collect::<String>())
+        });
+    }
+
     if !out.status.success() {
-        return Err(anyhow::anyhow!("ffprobe failed"));
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(anyhow::anyhow!("ffprobe failed with status {}: {}", out.status, stderr));
     }
 
     // Parse the JSON output from ffprobe

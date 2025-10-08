@@ -1,1 +1,9 @@
 .cursor/
+
+# Whisper models (large binary files)
+rust/models/*.bin
+
+rust/bin/ffmpeg
+rust/bin/ffprobe
+.DS_Store
+rust/bin/lib/libinternal/cmake/

@@ -62,7 +62,7 @@ pub struct WhisperCacheIndex {
     pub entries: Vec<WhisperCacheEntry>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WhisperSegment {
     pub id: u32,
@@ -71,7 +71,7 @@ pub struct WhisperSegment {
     pub text: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WhisperWord {
     pub word: String,
@@ -145,4 +145,19 @@ pub struct CaptionedVideoResult {
     pub captioned_video: String,          // Path to final video with captions
     pub width: u32,                       // Video width
     pub height: u32,                      // Video height
+}
+
+// Model download types
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadModelParams {
+    pub model: String,                    // Model name: "tiny", "base", "small", "medium", "large"
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadModelResult {
+    pub model: String,                    // Model name that was downloaded
+    pub path: String,                     // Path where model was saved
+    pub size: u64,                        // Downloaded file size in bytes
 }

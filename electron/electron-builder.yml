@@ -12,6 +12,19 @@ files:
 asarUnpack:
   - resources/**
   - '**/*.mp4'
+extraResources:
+  - from: "../rust/target/release/core"
+    to: "core"
+  # macOS binaries
+  - from: "../rust/bin/"
+    to: "bin"
+    filter:
+      - "**/*"
+  # Windows binaries
+  - from: "../rust/bin-win/"
+    to: "bin-win"
+    filter:
+      - "**/*"
 win:
   executableName: CapSlap
   target:

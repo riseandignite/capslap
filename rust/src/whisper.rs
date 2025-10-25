@@ -184,38 +184,24 @@ async fn ensure_whisper_model(model: &str) -> anyhow::Result<(String, String)> {
             _ => continue,
         };
 
-        // Check if model exists in common locations
-        let mut possible_paths = vec![];
-
-        // Add bundled model paths (relative to executable for production)
-        // Priority 1: Check next to executable (production macOS app bundle)
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                // For macOS app bundle: CapSlap.app/Contents/MacOS/../Resources/models/
-                possible_paths.push(format!("{}/models/{}", exe_dir.display(), model_filename));
-                if let Some(contents_dir) = exe_dir.parent() {
-                    possible_paths.push(format!("{}/Resources/models/{}", contents_dir.display(), model_filename));
-                }
+        // Check if model exists using the centralized models directory function
+        // This handles dev, production, and all platform-specific paths
+        if let Ok(models_dir) = get_models_dir() {
+            let model_path = models_dir.join(model_filename);
+            if model_path.exists() {
+                return Ok((model_path.to_string_lossy().to_string(), fallback_model.to_string()));
             }
         }
 
-        // Priority 2: Development environment
-        possible_paths.push(format!("{}/models/{}", env!("CARGO_MANIFEST_DIR"), model_filename));
+        // Also check system-wide locations as fallback
+        let system_paths = vec![
+            format!("/opt/homebrew/share/whisper-models/{}", model_filename),
+            format!("{}/.cache/whisper/{}", std::env::var("HOME").unwrap_or_default(), model_filename),
+        ];
 
-        // Priority 3: System locations
-        possible_paths.push(format!("./models/{}", model_filename));
-        possible_paths.push(format!("/opt/homebrew/share/whisper-models/{}", model_filename));
-        possible_paths.push(format!("~/.cache/whisper/{}", model_filename));
-
-        for path in possible_paths {
-            let expanded_path = if path.starts_with("~/") {
-                path.replace("~", &std::env::var("HOME").unwrap_or_default())
-            } else {
-                path
-            };
-
-            if std::path::Path::new(&expanded_path).exists() {
-                return Ok((expanded_path, fallback_model.to_string()));
+        for path in system_paths {
+            if std::path::Path::new(&path).exists() {
+                return Ok((path, fallback_model.to_string()));
             }
         }
     }
@@ -323,9 +309,14 @@ fn get_bundled_whisper_paths(exe_dir: &std::path::Path) -> Vec<PathBuf> {
 fn get_project_whisper_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
-    // Project bin directory
+    // Project bin directory (only used in development mode)
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let bin_dir = project_root.join("bin");
+
+    // Only add paths if the development directory exists
+    if !bin_dir.exists() {
+        return paths;
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -616,8 +607,14 @@ pub async fn download_model_rpc(
     };
 
     let url = get_model_download_url(model_filename);
-    let models_dir = get_models_dir()?;
+    let models_dir = get_models_dir()
+        .map_err(|e| anyhow::anyhow!("Cannot access models directory: {}. Please check app permissions.", e))?;
     let output_path = models_dir.join(model_filename);
+
+    emit(crate::rpc::RpcEvent::Log {
+        id: id.into(),
+        message: format!("Models will be saved to: {}", models_dir.display())
+    });
 
     emit(crate::rpc::RpcEvent::Log {
         id: id.into(),
@@ -639,7 +636,8 @@ pub async fn download_model_rpc(
         message: format!("Downloading {} ({:.1} MB)...", model_filename, total_size as f64 / 1024.0 / 1024.0)
     });
 
-    let mut file = tokio::fs::File::create(&output_path).await?;
+    let mut file = tokio::fs::File::create(&output_path).await
+        .map_err(|e| anyhow::anyhow!("Cannot create model file at {}: {}. Check app permissions in System Settings > Privacy & Security.", output_path.display(), e))?;
     let mut downloaded = 0u64;
     let mut stream = response.bytes_stream();
 
@@ -686,19 +684,68 @@ pub fn check_model_exists(model_name: &str) -> anyhow::Result<bool> {
         _ => return Ok(false)
     };
 
-    let models_dir = get_models_dir()?;
+    let models_dir = get_models_dir()
+        .map_err(|e| anyhow::anyhow!("Cannot access models directory: {}. Please check app permissions.", e))?;
     let model_path = models_dir.join(model_filename);
     Ok(model_path.exists())
 }
 
 /// Get the models directory path
 fn get_models_dir() -> anyhow::Result<std::path::PathBuf> {
-    // Use project root models directory for both dev and production
-    // This ensures models are in one place: /Users/egor/Desktop/capslap/rust/models/
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let models_dir = project_root.join("models");
-    std::fs::create_dir_all(&models_dir)?;
-    Ok(models_dir)
+    // Priority 1: Check if we're in development (project exists)
+    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
+    if dev_path.exists() && dev_path.is_dir() {
+        return Ok(dev_path);
+    }
+
+    // Priority 2: Production - use Application Support directory (standard macOS location)
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home_dir) = std::env::var_os("HOME") {
+            let app_support = std::path::PathBuf::from(home_dir)
+                .join("Library/Application Support/CapSlap/models");
+            std::fs::create_dir_all(&app_support)
+                .map_err(|e| anyhow::anyhow!("Failed to create models directory at {}: {}", app_support.display(), e))?;
+            return Ok(app_support);
+        }
+    }
+
+    // Priority 3: Check bundled resources (app bundle)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // For macOS app bundle: Contents/MacOS/../Resources/models/
+            if let Some(contents_dir) = exe_dir.parent() {
+                let bundled_models = contents_dir.join("Resources/models");
+                if bundled_models.exists() {
+                    return Ok(bundled_models);
+                }
+            }
+        }
+    }
+
+    // Priority 4: Windows/Linux - use local app data
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            let models_dir = std::path::PathBuf::from(appdata).join("CapSlap/models");
+            std::fs::create_dir_all(&models_dir)?;
+            return Ok(models_dir);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(home_dir) = std::env::var_os("HOME") {
+            let models_dir = std::path::PathBuf::from(home_dir).join(".local/share/capslap/models");
+            std::fs::create_dir_all(&models_dir)?;
+            return Ok(models_dir);
+        }
+    }
+
+    // Fallback: current directory
+    let fallback = std::path::PathBuf::from("./models");
+    std::fs::create_dir_all(&fallback)?;
+    Ok(fallback)
 }
 
 /// Parse whisper.cpp JSON output and convert to WhisperResponse

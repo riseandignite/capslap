@@ -43,6 +43,37 @@ fn get_ffmpeg_path_sync() -> String {
     "ffmpeg".to_string() // Fallback
 }
 
+/// Get the fonts directory path for subtitle rendering
+/// Returns None if fonts directory cannot be found (libass will use system fonts)
+fn get_fonts_dir() -> Option<std::path::PathBuf> {
+    // Priority 1: Development environment
+    let dev_fonts = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/fonts");
+    if dev_fonts.exists() && dev_fonts.is_dir() {
+        return Some(dev_fonts);
+    }
+
+    // Priority 2: Bundled fonts in app bundle (macOS)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // For macOS app bundle: Contents/MacOS/../Resources/fonts/
+            if let Some(contents_dir) = exe_dir.parent() {
+                let bundled_fonts = contents_dir.join("Resources/fonts");
+                if bundled_fonts.exists() {
+                    return Some(bundled_fonts);
+                }
+            }
+            // Also try next to executable
+            let exe_fonts = exe_dir.join("fonts");
+            if exe_fonts.exists() {
+                return Some(exe_fonts);
+            }
+        }
+    }
+
+    // No custom fonts directory found - libass will use system fonts
+    None
+}
+
 /// Properly escape subtitle file paths for FFmpeg subtitle filter
 /// Handles Windows paths with drive letters and special characters
 pub fn escape_subtitle_path(path: &str) -> String {
@@ -198,9 +229,13 @@ pub fn build_fitpad_filter_with_format(
 
     if let Some(subtitle_path) = subtitle_path {
         let escaped_path = escape_subtitle_path(subtitle_path);
-        // Use absolute path to fonts directory
-        let fonts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/fonts");
-        add_filter(&format!("subtitles={}:fontsdir={}", escaped_path, fonts_dir.display()));
+        // Get fonts directory (development or bundled)
+        if let Some(fonts_dir) = get_fonts_dir() {
+            add_filter(&format!("subtitles={}:fontsdir={}", escaped_path, fonts_dir.display()));
+        } else {
+            // No fontsdir specified - libass will use system fonts
+            add_filter(&format!("subtitles={}", escaped_path));
+        }
     }
 
     // End with encoder-optimized format to avoid hidden conversions
@@ -381,6 +416,19 @@ pub enum HardwareEncoder {
     Software,
 }
 
+/// Convert CRF value (0-51) to VideoToolbox quality (0-100)
+/// CRF scale: 0=lossless, 18=visually lossless, 23=default, 51=worst
+/// VideoToolbox scale: 0=worst, 50=medium, 100=best
+fn crf_to_videotoolbox_quality(crf: &str) -> String {
+    if let Ok(crf_value) = crf.parse::<i32>() {
+        // Invert and scale: CRF 18 -> ~75, CRF 23 -> ~60, CRF 28 -> ~45
+        let quality = 100 - ((crf_value as f32 * 100.0) / 51.0) as i32;
+        quality.max(0).min(100).to_string()
+    } else {
+        "65".to_string() // Fallback to medium-high quality
+    }
+}
+
 /// Configure hardware encoder arguments based on available hardware (for TokioCommand)
 /// Includes VideoToolbox optimizations and color metadata locking
 pub fn configure_hardware_encoder_args(
@@ -392,10 +440,12 @@ pub fn configure_hardware_encoder_args(
 ) {
     match encoder {
         HardwareEncoder::VideoToolbox => {
+            // VideoToolbox H.264 encoder for macOS hardware acceleration
+            // Note: VideoToolbox uses -q:v with 0-100 scale (higher=better), not CRF
+            let quality = crf_to_videotoolbox_quality(crf);
             cmd.arg("-c:v").arg("h264_videotoolbox")
-               .arg("-b:v").arg("0")                    // Use CRF mode (constant quality)
-               .arg("-crf").arg(crf)                    // Quality setting (lower = better)
-               .arg("-allow_sw").arg("1")               // Allow software fallback if needed
+               .arg("-q:v").arg(&quality)               // Quality setting (0-100, ~60-80 for good quality)
+               .arg("-allow_sw").arg("1")               // Allow software fallback if hardware fails
                .arg("-g").arg(gop_size_str)             // GOP size for seeking
                .arg("-pix_fmt").arg("nv12");            // VideoToolbox prefers NV12
         },
@@ -436,14 +486,16 @@ pub fn get_hardware_encoder_args(
     preset: &str
 ) -> Vec<String> {
     let mut args = match encoder {
-        HardwareEncoder::VideoToolbox => vec![
-            "-c:v".to_string(), "h264_videotoolbox".to_string(),
-            "-b:v".to_string(), "0".to_string(),
-            "-crf".to_string(), crf.to_string(),
-            "-allow_sw".to_string(), "1".to_string(),
-            "-g".to_string(), gop_size_str.to_string(),
-            "-pix_fmt".to_string(), "nv12".to_string(),           // VideoToolbox prefers NV12
-        ],
+        HardwareEncoder::VideoToolbox => {
+            let quality = crf_to_videotoolbox_quality(crf);
+            vec![
+                "-c:v".to_string(), "h264_videotoolbox".to_string(),
+                "-q:v".to_string(), quality,                      // Quality setting (0-100, converted from CRF)
+                "-allow_sw".to_string(), "1".to_string(),
+                "-g".to_string(), gop_size_str.to_string(),
+                "-pix_fmt".to_string(), "nv12".to_string(),       // VideoToolbox prefers NV12
+            ]
+        },
         HardwareEncoder::Nvenc => vec![
             "-c:v".to_string(), "h264_nvenc".to_string(),
             "-cq".to_string(), crf.to_string(),
@@ -687,7 +739,7 @@ pub async fn export_video(id: &str, p: ExportParams, mut emit: impl FnMut(RpcEve
         cmd.arg("-b:a").arg("160k");              // Explicit AAC bitrate for quality
     }
 
-    for arg in audio_args {
+    for arg in &audio_args {
         cmd.arg(arg);                             // Additional audio encoding args
     }
 
@@ -710,7 +762,56 @@ pub async fn export_video(id: &str, p: ExportParams, mut emit: impl FnMut(RpcEve
     });
 
     let status = cmd.status().await?;
-    if !status.success() {
+
+    // If hardware encoder failed, try falling back to software encoding
+    if !status.success() && !matches!(hardware_encoder, HardwareEncoder::Software) {
+        emit(RpcEvent::Log {
+            id: id.into(),
+            message: format!("Hardware encoder {} failed, falling back to software encoding (libx264)", encoder_info)
+        });
+
+        // Rebuild command with software encoder
+        let mut fallback_cmd = TokioCommand::new(find_ffmpeg_binary().await?);
+        fallback_cmd.arg("-y").arg("-i").arg(&p.input);
+        fallback_cmd.arg("-sws_flags").arg("lanczos+accurate_rnd+full_chroma_int");
+
+        // Reapply video filters
+        if !vf_parts.is_empty() {
+            fallback_cmd.arg("-vf").arg(vf_parts.join(","));
+        }
+
+        fallback_cmd.arg("-fps_mode").arg("passthrough").arg("-threads").arg("0");
+
+        // Use software encoder
+        configure_hardware_encoder_args(&mut fallback_cmd, HardwareEncoder::Software, &crf, &gop_size.to_string(), preset);
+        fallback_cmd.arg("-tune").arg(tune);
+
+        // Reapply audio settings
+        fallback_cmd.arg("-c:a").arg(audio_codec);
+        if audio_codec != "copy" && audio_codec == "aac" && audio_args.is_empty() {
+            fallback_cmd.arg("-b:a").arg("160k");
+        }
+        for arg in &audio_args {
+            fallback_cmd.arg(arg);
+        }
+
+        fallback_cmd
+           .arg("-map_metadata").arg("0")
+           .arg("-map").arg("0:v:0")
+           .arg("-map").arg("0:a?")
+           .arg("-movflags").arg("+faststart")
+           .arg(&p.out);
+
+        emit(RpcEvent::Log {
+            id: id.into(),
+            message: "Retrying with software encoder (libx264)...".into()
+        });
+
+        let fallback_status = fallback_cmd.status().await?;
+        if !fallback_status.success() {
+            return Err(anyhow::anyhow!("ffmpeg export failed with both hardware and software encoders"));
+        }
+    } else if !status.success() {
         return Err(anyhow::anyhow!("ffmpeg export failed"));
     }
 

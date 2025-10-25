@@ -191,6 +191,46 @@ async fn optimized_single_format_encode(
     // Determine the best available hardware encoder for H.264 first (for filter optimization)
     let hardware_encoder = crate::video::get_best_hardware_encoder().await;
 
+    // Try with hardware encoder first, then fallback to software if it fails
+    let result = try_encode_with_encoder(
+        id,
+        input_video,
+        ass_path,
+        output_path,
+        target_w,
+        target_h,
+        probe_result,
+        hardware_encoder,
+    ).await;
+
+    // If hardware encoder failed, try software fallback
+    if result.is_err() && !matches!(hardware_encoder, crate::video::HardwareEncoder::Software) {
+        return try_encode_with_encoder(
+            id,
+            input_video,
+            ass_path,
+            output_path,
+            target_w,
+            target_h,
+            probe_result,
+            crate::video::HardwareEncoder::Software,
+        ).await;
+    }
+
+    result
+}
+
+/// Helper function to try encoding with a specific encoder
+async fn try_encode_with_encoder(
+    id: &str,
+    input_video: &str,
+    ass_path: &PathBuf,
+    output_path: &str,
+    target_w: u32,
+    target_h: u32,
+    probe_result: &crate::video::ProbeResult,
+    hardware_encoder: crate::video::HardwareEncoder,
+) -> Result<()> {
     // Build optimized filter with format conversion AND subtitles in one pass
     // Use encoder-specific format optimization (NV12 for VideoToolbox/NVENC, yuv420p for software)
     let ass = ass_path.to_string_lossy().to_string();
@@ -212,7 +252,7 @@ async fn optimized_single_format_encode(
         .await
         .map_err(|e| anyhow!("FFmpeg not found: {}", e))?;
 
-    let status = Command::new(ffmpeg_path)
+    let status = Command::new(&ffmpeg_path)
         .args({
             let mut args = vec![
                 "-y", "-i", input_video,
@@ -226,16 +266,18 @@ async fn optimized_single_format_encode(
             // Add hardware-optimized encoding parameters
             match hardware_encoder {
                 crate::video::HardwareEncoder::VideoToolbox => {
+                    // VideoToolbox uses -q:v (0-100 scale) instead of CRF
+                    // CRF 16 is very high quality, so use q:v ~70-75 (higher is better for VideoToolbox)
+                    // Note: pix_fmt is already set in the filter (format=nv12), no need to duplicate
                     args.extend_from_slice(&[
                         "-c:v", "h264_videotoolbox",
-                        "-b:v", "0",
-                        "-crf", "16",
-                        "-allow_sw", "1",
+                        "-q:v", "72",                 // Quality setting (0-100, higher=better)
+                        "-allow_sw", "1",             // Allow software fallback
                         "-g", &gop_size_str,
-                        "-pix_fmt", "yuv420p",
                     ]);
                 },
                 crate::video::HardwareEncoder::Nvenc => {
+                    // Note: pix_fmt is already set in the filter (format=nv12), no need to duplicate
                     args.extend_from_slice(&[
                         "-c:v", "h264_nvenc",
                         "-cq", "16",
@@ -243,16 +285,15 @@ async fn optimized_single_format_encode(
                         "-tune", "hq",
                         "-rc", "vbr",
                         "-g", &gop_size_str,
-                        "-pix_fmt", "yuv420p",
                     ]);
                 },
                 crate::video::HardwareEncoder::Software => {
+                    // Note: pix_fmt is already set in the filter (format=yuv420p), no need to duplicate
                     args.extend_from_slice(&[
                         "-c:v", "libx264",
                         "-preset", "medium",
                         "-crf", "16",
                         "-g", &gop_size_str,
-                        "-pix_fmt", "yuv420p",
                     ]);
                 }
             }
@@ -277,7 +318,12 @@ async fn optimized_single_format_encode(
         .status()?;
 
     if !status.success() {
-        return Err(anyhow!("FFmpeg failed to encode format for {}", id));
+        let encoder_name = match hardware_encoder {
+            crate::video::HardwareEncoder::VideoToolbox => "h264_videotoolbox",
+            crate::video::HardwareEncoder::Nvenc => "h264_nvenc",
+            crate::video::HardwareEncoder::Software => "libx264",
+        };
+        return Err(anyhow!("FFmpeg failed to encode format for {} with encoder {}", id, encoder_name));
     }
 
     Ok(())

@@ -2,6 +2,9 @@
 
 Automatically generate and burn captions into videos using AI transcription.
 
+<img width="1200" height="800" alt="CleanShot 2025-10-25 at 13 28 49@2x" src="https://github.com/user-attachments/assets/58b2db2a-e2dd-433a-bf2e-5d8c19efad93" />
+
+
 ## Prerequisites
 
 - **Rust**: https://rustup.rs/

@@ -1,388 +1,19 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Button } from '@/app/components/ui/button'
 import { toast, Toaster } from 'sonner'
-import { Switch } from '@/app/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select'
-import { Upload, Film, Download, Cog, Trash, Zap, Settings, FileVideo, Key, Palette } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Cog, Zap } from 'lucide-react'
 import { TitleBar } from './components/TitleBar'
-import { ModelDownloader } from './components/ModelDownloader'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
-} from '@/app/components/ui/dialog'
-import { Input } from './components/ui/input'
-import { ModelInfo } from '@/lib/preload'
+import { Sidebar } from './components/Sidebar'
+import { DragOverlay } from './components/DragOverlay'
+import { UploadArea } from './components/UploadArea'
+import { VideoList } from './components/VideoList'
+import { Template, Settings, defaultSettings, getFontName } from './types'
+import { templates } from './constants/templates'
+import { showErrorToast } from './utils/errors'
 
-const getVideoPath = (filename: string) => {
-  if (import.meta.env.DEV) {
-    return `./assets/${filename}`
-  }
-
-  return `res://videos/${filename}`
-}
-
-// Function to display user-friendly errors
-const showErrorToast = (error: any, count: number = 1) => {
-  const countText = count > 1 ? ` (${count} videos)` : ''
-
-  switch (error.name) {
-    case 'API_KEY_MISSING':
-      toast.error('🔑 API Key Not Configured', {
-        description: 'Add OpenAI API key in settings for better transcription quality.',
-        action: {
-          label: 'Settings',
-          onClick: () => {
-            // Will open API key settings
-          },
-        },
-      })
-      break
-
-    case 'API_KEY_INVALID':
-      toast.error('🔑 Invalid API Key', {
-        description: 'Please check your OpenAI API key in settings.',
-      })
-      break
-
-    case 'NO_LOCAL_MODELS':
-      toast.warning('📥 Using Online Transcription', {
-        description: 'Local models not found. Transcription performed via OpenAI API.',
-      })
-      break
-
-    case 'BINARY_NOT_FOUND':
-      toast.error('⚙️ System Error', {
-        description: 'Application components not found. Try reinstalling CapSlap.',
-      })
-      break
-
-    case 'BINARY_DEP_MISSING':
-      toast.error('🧩 Missing System Libraries', {
-        description: 'Media tools require static ffmpeg/ffprobe builds. Please reinstall or contact support.',
-      })
-      break
-
-    case 'NETWORK_ERROR':
-      toast.error('🌐 Internet Connection Problem', {
-        description: 'Check your network connection and try again.',
-      })
-      break
-
-    case 'RATE_LIMIT':
-      toast.error('⏰ Rate Limit Exceeded', {
-        description: 'Too many requests to OpenAI API. Try again later.',
-      })
-      break
-
-    case 'QUOTA_EXCEEDED':
-      toast.error('💳 API Quota Exhausted', {
-        description: 'Top up your OpenAI balance or use local models.',
-      })
-      break
-
-    case 'FILE_NOT_FOUND':
-      toast.error('📁 File Not Found', {
-        description: 'Make sure the video file exists and is accessible.',
-      })
-      break
-
-    default:
-      toast.error(`❌ Error${countText}`, {
-        description: error.message || 'An unexpected error occurred. Please try again.',
-      })
-  }
-}
-
-interface Template {
-  id: 'oneliner' | 'karaoke' | 'vibrant'
-  captionStyle: 'karaoke' | 'oneliner' | 'vibrant'
-  name: string
-  src: string | null
-  textColor: string
-  highlightWordColor: string
-  outlineColor: string
-  glowEffect: boolean
-  font: string
-  position: 'bottom' | 'center'
-}
-
-interface Settings {
-  selectedTemplate: Template['id']
-  exportFormats: string[]
-  selectedFont: string
-  selectedModel: ModelInfo['name']
-  textColor: string
-  highlightWordColor: string
-  outlineColor: string
-  glowEffect: boolean
-  captionStyle: Template['captionStyle']
-  captionPosition: 'bottom' | 'center'
-  selectedLanguage: string
-}
-
-const defaultSettings: Settings = {
-  selectedTemplate: 'karaoke',
-  exportFormats: ['9:16'],
-  selectedFont: 'montserrat-black',
-  selectedModel: 'whisper-1',
-  textColor: '#ffffff',
-  highlightWordColor: '#ffff00',
-  outlineColor: '#000000',
-  glowEffect: false,
-  captionStyle: 'karaoke',
-  captionPosition: 'bottom',
-  selectedLanguage: 'en',
-}
-
-const templates: Template[] = [
-  {
-    id: 'oneliner',
-    captionStyle: 'oneliner',
-    name: 'Oneliner',
-    src: getVideoPath('oneliner.mp4'),
-    textColor: '#ffffff',
-    highlightWordColor: '#ffff00',
-    outlineColor: '#000000',
-    glowEffect: true,
-    font: 'montserrat-black',
-    position: 'bottom',
-  },
-  {
-    id: 'karaoke',
-    captionStyle: 'karaoke',
-    name: 'Karaoke',
-    src: getVideoPath('karaoke.mp4'),
-    textColor: '#ffffff',
-    highlightWordColor: '#00f924',
-    outlineColor: '#000000',
-    glowEffect: false,
-    font: 'komika-axis',
-    position: 'bottom',
-  },
-  {
-    id: 'vibrant',
-    captionStyle: 'vibrant',
-    name: 'Vibrant',
-    src: getVideoPath('vibrant.mp4'),
-    textColor: '#898284',
-    highlightWordColor: '#7ef1c5',
-    outlineColor: '#000000',
-    glowEffect: false,
-    font: 'roboto-bold',
-    position: 'center',
-  },
-]
-
-const availableExportFormats = [
-  { id: '9:16', name: '9:16', description: 'Perfect for TikTok, Instagram Stories, YouTube Shorts' },
-  { id: '16:9', name: '16:9', description: 'Standard for YouTube, desktop viewing' },
-  { id: '1:1', name: '1:1', description: 'Instagram posts, Facebook' },
-  { id: '4:5', name: '4:5', description: 'Instagram feed posts' },
-]
-
-const availableFonts = [
-  { id: 'komika-axis', name: 'Komika Axis' },
-  { id: 'montserrat-black', name: 'Montserrat Black' },
-  { id: 'theboldfont', name: 'THEBOLDFONT' },
-  { id: 'kanit-bold', name: 'Kanit Bold' },
-  { id: 'poppins-black', name: 'Poppins Black' },
-  { id: 'oswald-bold', name: 'Oswald Bold' },
-  { id: 'bangers-regular', name: 'Bangers Regular' },
-  { id: 'worksans-bold', name: 'WorkSans Bold' },
-  { id: 'roboto-bold', name: 'Roboto Bold' },
-]
-
-const FONT_NAMES = {
-  'montserrat-black': 'Montserrat Black',
-  'komika-axis': 'Komika Axis',
-  theboldfont: 'THEBOLDFONT',
-  'kanit-bold': 'Kanit Bold',
-  'poppins-black': 'Poppins Black',
-  'oswald-bold': 'Oswald Bold',
-  'bangers-regular': 'Bangers Regular',
-  'worksans-bold': 'WorkSans Bold',
-  'roboto-bold': 'Roboto Bold',
-} as const
-
-const getFontName = (fontId: string): string => {
-  return FONT_NAMES[fontId as keyof typeof FONT_NAMES] || 'Montserrat Black'
-}
-
-function TemplatePreviewCard({
-  template,
-  isSelected,
-  onSelect,
-}: {
-  template: Template
-  isSelected: boolean
-  onSelect: () => void
-}) {
-  const [isHovered, setIsHovered] = React.useState(false)
-
-  return (
-    <div
-      className={cn(
-        'group relative rounded-lg border transition-all duration-200 cursor-pointer overflow-hidden',
-        'hover:scale-[1.02]',
-
-        isSelected
-          ? 'border-primary bg-primary/10 ring-1 ring-primary/20'
-          : 'border-border/50 bg-card/50 hover:border-primary/50 hover:bg-primary/5'
-      )}
-      onClick={onSelect}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <div className="flex flex-col h-full">
-        {/* Video Preview with 9:16 aspect ratio */}
-        <div className="relative w-full" style={{ aspectRatio: '9/16' }}>
-          <video
-            src={template.src || ''}
-            className="w-full h-full object-cover"
-            muted
-            loop
-            playsInline
-            ref={(el) => {
-              if (el) {
-                if (isHovered) {
-                  el.play()
-                } else {
-                  el.pause()
-                  el.currentTime = 0
-                }
-              }
-            }}
-          />
-
-          {/* Overlay for better text visibility */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-
-          {/* Video info overlay */}
-          <div className="absolute bottom-0 left-0 right-0 p-2">
-            <h3 className="font-medium text-white text-xs">{template.name}</h3>
-          </div>
-        </div>
-      </div>
-
-      {isSelected && (
-        <div className="absolute top-3 right-3">
-          <div className="w-2 h-2 rounded-full bg-primary"></div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SettingsModal({
-  onSave,
-  isOpen,
-  onOpenChange,
-  apiKey,
-}: {
-  onSave: (apiKey: string) => void
-  isOpen: boolean
-  onOpenChange: (open: boolean) => void
-  apiKey: string
-}) {
-  const [apiKeyState, setApiKeyState] = useState(apiKey)
-
-  useEffect(() => {
-    setApiKeyState(apiKey)
-  }, [apiKey])
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-9 h-9 text-muted-foreground hover:text-foreground bg-card/80 backdrop-blur-sm border border-border/50 hover:bg-card/90 transition-all duration-200 focus:ring-0 focus-visible:ring-0 ring-0"
-        >
-          <Key className="!w-3.5 !h-3.5" />
-        </Button>
-      </DialogTrigger>
-
-      <DialogContent className="max-w-[450px]">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-medium text-white/90">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/20">
-                <Key className="w-5 h-5 text-primary" />
-              </div>
-              <h2 className="text-xl font-medium text-foreground">API Settings</h2>
-            </div>
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-4 py-4">
-          <div className="grid gap-2">
-            <label htmlFor="name" className="text-sm text-white/40 font-medium">
-              OpenAI Api Key
-            </label>
-            <Input
-              id="key"
-              placeholder="sk-..."
-              className="w-full px-4 py-3 border border-border rounded-lg bg-background/50 focus:outline-none hover:border-primary/50 focus:border-primary/70 ring-0 focus-visible:ring-2 focus-visible:ring-primary/20 focus:ring-2 focus:ring-primary/20 text-foreground transition-all duration-200"
-              value={apiKeyState}
-              onChange={(e) => setApiKeyState(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <DialogFooter className="gap-4">
-          <DialogClose asChild>
-            <Button variant="outline" className="flex-1 bg-transparent text-foreground">
-              Cancel
-            </Button>
-          </DialogClose>
-          <DialogClose asChild>
-            <Button
-              onClick={() => {
-                onSave(apiKeyState)
-                onOpenChange(false)
-              }}
-              className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              Save Settings
-            </Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function FileCard({ path, onRemove }: { path: string; onRemove: () => void }) {
-  const fileName = path.split('/').pop() || ''
-
-  return (
-    <div className="group relative bg-gradient-to-br from-card/80 to-card/40 border border-border/30 rounded-xl p-4 hover:border-primary/40 transition-all duration-300 backdrop-blur-sm">
-      <div className="flex items-center gap-4">
-        <div className="relative">
-          <FileVideo className="w-6 h-6 text-white" />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-foreground truncate text-sm">{fileName}</p>
-        </div>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:!bg-destructive/10 transition-all duration-200 rounded-lg"
-          onClick={onRemove}
-        >
-          <Trash className="w-4 h-4" />
-        </Button>
-      </div>
-    </div>
-  )
+type ProgressData = {
+  progress: number
+  status: string
 }
 
 export default function App() {
@@ -392,9 +23,11 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [_, setDragCounter] = useState(0)
+  const [_dragCounter, setDragCounter] = useState(0)
   const [isApiKeySettingsOpen, setIsApiKeySettingsOpen] = useState(false)
   const [shouldGenerateAfterApiKey, setShouldGenerateAfterApiKey] = useState(false)
+  const [progressMap, setProgressMap] = useState<Map<string, ProgressData>>(new Map())
+  const requestIdToVideoPathRef = useRef<Map<string, string>>(new Map())
 
   useEffect(() => {
     const savedSettings = localStorage.getItem('settings-v1')
@@ -491,27 +124,100 @@ export default function App() {
 
     try {
       setIsGenerating(true)
+      // Clear previous progress
+      setProgressMap(new Map())
+      requestIdToVideoPathRef.current = new Map()
 
-      const results = await Promise.allSettled(
-        selectedVideos.map(async (video) =>
-          window.rust.call('generateCaptions', {
-            inputVideo: video,
-            exportFormats: videoSettings.exportFormats,
-            karaoke: videoSettings.captionStyle === 'karaoke',
-            fontName: getFontName(videoSettings.selectedFont),
-            splitByWords: true,
-            model: videoSettings.selectedModel,
-            language: videoSettings.selectedLanguage,
-            prompt: null,
-            textColor: videoSettings.textColor,
-            highlightWordColor: videoSettings.highlightWordColor,
-            outlineColor: videoSettings.outlineColor,
-            glowEffect: videoSettings.glowEffect,
-            position: videoSettings.captionPosition,
-            apiKey: apiKey,
-          })
-        )
+      // Track pending videos that don't have request IDs yet
+      const pendingVideos = new Set(selectedVideos)
+
+      // Register progress handler BEFORE starting async operations
+      const unsubscribe = window.rust.onProgress((ev: any) => {
+        console.log('[APP] Progress event received:', ev)
+        if (ev.event === 'progress' && ev.id) {
+          let videoPath = requestIdToVideoPathRef.current.get(ev.id)
+
+          // If we don't have a mapping yet, try to match to first pending video
+          if (!videoPath && pendingVideos.size > 0) {
+            // Get the first pending video (in order)
+            const firstPending = Array.from(pendingVideos)[0]
+            videoPath = firstPending
+            pendingVideos.delete(firstPending)
+
+            // Update the mapping
+            requestIdToVideoPathRef.current.set(ev.id, videoPath)
+            console.log('[APP] Mapped request ID', ev.id, 'to video:', videoPath)
+          }
+
+          // Update progress if we have a video path
+          if (videoPath) {
+            console.log('[APP] Updating progress for', videoPath, ':', Math.round(ev.progress * 100), '%', ev.status)
+            setProgressMap((prev) => {
+              const newMap = new Map(prev)
+              newMap.set(videoPath!, {
+                progress: Math.round(ev.progress * 100),
+                status: ev.status || 'Processing...',
+              })
+              return newMap
+            })
+          } else {
+            console.log('[APP] No video path found for request ID:', ev.id)
+          }
+        }
+      })
+
+      // Initialize progress for all videos
+      setProgressMap((prev) => {
+        const newMap = new Map(prev)
+        selectedVideos.forEach((video) => {
+          if (!newMap.has(video)) {
+            newMap.set(video, {
+              progress: 0,
+              status: 'Starting...',
+            })
+          }
+        })
+        return newMap
+      })
+
+      // Start all requests
+      const requestPromises = selectedVideos.map((video) =>
+        window.rust.call('generateCaptions', {
+          inputVideo: video,
+          exportFormats: videoSettings.exportFormats,
+          karaoke: videoSettings.captionStyle === 'karaoke',
+          fontName: getFontName(videoSettings.selectedFont),
+          splitByWords: true,
+          model: videoSettings.selectedModel,
+          language: videoSettings.selectedLanguage,
+          prompt: null,
+          textColor: videoSettings.textColor,
+          highlightWordColor: videoSettings.highlightWordColor,
+          outlineColor: videoSettings.outlineColor,
+          glowEffect: videoSettings.glowEffect,
+          position: videoSettings.captionPosition,
+          apiKey: apiKey,
+        })
       )
+
+      // Wait for all requests to complete
+      const results = await Promise.allSettled(requestPromises)
+
+      // Clean up progress handler
+      unsubscribe()
+
+      // Mark all videos as complete (only after promise resolves)
+      setProgressMap((prev) => {
+        const newMap = new Map(prev)
+        // Update all videos to show 100% with "Complete" status
+        selectedVideos.forEach((video) => {
+          newMap.set(video, {
+            progress: 100,
+            status: 'Complete',
+          })
+        })
+        return newMap
+      })
 
       const successful = results.filter((r) => r.status === 'fulfilled')
       const failed = results.filter((r) => r.status === 'rejected')
@@ -521,21 +227,24 @@ export default function App() {
       }
 
       if (failed.length > 0) {
-        // Группируем ошибки по типам для лучшего UX
         const errors = failed.map((f) => f.reason)
         const uniqueErrors = [...new Set(errors.map((err) => err.name || 'UNKNOWN_ERROR'))]
 
         if (uniqueErrors.length === 1) {
-          // Одинаковый тип ошибки для всех файлов
           const sampleError = errors[0]
           showErrorToast(sampleError, failed.length)
         } else {
-          // Different error types
           toast.error(`Failed to process ${failed.length} videos`, {
             description: 'Mixed errors occurred. Check settings and try again.',
           })
         }
       }
+
+      // Clear progress after a short delay to show completion
+      setTimeout(() => {
+        setProgressMap(new Map())
+        requestIdToVideoPathRef.current = new Map()
+      }, 2000)
     } catch (error: any) {
       showErrorToast(error, 1)
     } finally {
@@ -627,420 +336,32 @@ export default function App() {
       >
         <Toaster />
 
-        {isDragOver && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-            <div className="absolute inset-0 bg-[#08090a] backdrop-blur-md animate-in fade-in duration-300" />
+        {isDragOver && <DragOverlay />}
 
-            <div className="relative z-10 flex flex-col items-center justify-center p-12 rounded-3xl border-2 border-dashed border-primary/70 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/20 backdrop-blur-xl animate-in zoom-in-95 fade-in duration-300 shadow-2xl">
-              <div className="relative mb-8">
-                <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl animate-pulse" />
-                <div className="relative p-4 rounded-full bg-primary/20 border border-primary/30">
-                  <Upload className="w-12 h-12 text-primary" />
-                </div>
-              </div>
-
-              <div className="text-center space-y-3">
-                <h3 className="text-2xl font-medium text-primary">Drop your video to upload</h3>
-                <div className="flex items-center justify-center gap-2 text-primary/70 text-sm">
-                  <span>Supported:</span>
-                  <div className="flex gap-1">
-                    {['MP4', 'MOV', 'MKV', 'AVI'].map((format) => (
-                      <span key={format} className="px-1.5 py-0.5 bg-primary/20 rounded text-xs font-mono">
-                        {format}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Sidebar */}
-        <div
-          className={cn(
-            'bg-card/50 border-r border-border/50 flex flex-col transition-all duration-300 ease-out',
-            'w-80'
-          )}
-        >
-          {/* Header */}
-          <div className="p-4 pt-6 border-b border-border/50 relative">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-primary/80">
-                  <Zap className="w-6 h-6 text-primary-foreground" />
-                </div>
-                <h1 className="text-2xl font-bold text-primary">CapSlap</h1>
-              </div>
-              <SettingsModal
-                onSave={handleSaveApiKey}
-                isOpen={isApiKeySettingsOpen}
-                onOpenChange={setIsApiKeySettingsOpen}
-                apiKey={apiKey}
-              />
-            </div>
-            <p className="text-sm text-muted-foreground truncate">Lightning-fast AI captions</p>
-          </div>
-          <div className={cn('sidebar-content flex-1 flex flex-col overflow-y-auto scrollbar-hide')}>
-            {/* Templates */}
-            <div className="p-4 border-b border-border/50">
-              <h3 className="text-base font-medium text-foreground mb-3 flex items-center gap-2">
-                <Film className="w-4 h-4" />
-                Templates
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                {templates.map((template) => (
-                  <TemplatePreviewCard
-                    key={template.id}
-                    template={template}
-                    isSelected={videoSettings.selectedTemplate === template.id}
-                    onSelect={() => selectTemplate(template)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Quick Settings */}
-            <div className="p-4 border-b border-border/50">
-              <div>
-                <h3 className="text-base font-medium text-foreground mb-3 flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  Quick Settings
-                </h3>
-
-                <div className="space-y-3 text-foreground">
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Style</label>
-                    <Select
-                      value={videoSettings.captionStyle}
-                      onValueChange={(value: 'karaoke' | 'oneliner') => updateSettings({ captionStyle: value })}
-                    >
-                      <SelectTrigger className="w-full h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="karaoke">Karaoke</SelectItem>
-                        <SelectItem value="oneliner">Oneliner</SelectItem>
-                        <SelectItem value="vibrant">Vibrant</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Position</label>
-                    <Select
-                      value={videoSettings.captionPosition}
-                      onValueChange={(value: 'bottom' | 'center') => updateSettings({ captionPosition: value })}
-                    >
-                      <SelectTrigger className="w-full  h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="bottom">Bottom</SelectItem>
-                        <SelectItem value="center">Center</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Language</label>
-                    <Select
-                      value={videoSettings.selectedLanguage}
-                      onValueChange={(value) => updateSettings({ selectedLanguage: value })}
-                    >
-                      <SelectTrigger className="w-full h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="en">English</SelectItem>
-                        <SelectItem value="ar">العربية (Arabic)</SelectItem>
-                        <SelectItem value="es">Español (Spanish)</SelectItem>
-                        <SelectItem value="fr">Français (French)</SelectItem>
-                        <SelectItem value="de">Deutsch (German)</SelectItem>
-                        <SelectItem value="ru">Русский (Russian)</SelectItem>
-                        <SelectItem value="zh">中文 (Chinese)</SelectItem>
-                        <SelectItem value="ja">日本語 (Japanese)</SelectItem>
-                        <SelectItem value="ko">한국어 (Korean)</SelectItem>
-                        <SelectItem value="pt">Português (Portuguese)</SelectItem>
-                        <SelectItem value="it">Italiano (Italian)</SelectItem>
-                        <SelectItem value="hi">हिन्दी (Hindi)</SelectItem>
-                        <SelectItem value="tr">Türkçe (Turkish)</SelectItem>
-                        <SelectItem value="nl">Nederlands (Dutch)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Font</label>
-                    <Select
-                      value={videoSettings.selectedFont}
-                      onValueChange={(value) => updateSettings({ selectedFont: value })}
-                    >
-                      <SelectTrigger className="w-full  h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableFonts.map((font) => (
-                          <SelectItem key={font.id} value={font.id}>
-                            {font.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {/* </div> */}
-
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-muted-foreground">Glow Effect</label>
-                    <Switch
-                      checked={videoSettings.glowEffect}
-                      onCheckedChange={(checked) => updateSettings({ glowEffect: checked })}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Color Controls */}
-            <div className="p-4 border-b border-border/50">
-              <h3 className="text-base font-medium text-foreground mb-3 flex items-center gap-2">
-                <Palette className="w-4 h-4" />
-                Color Controls
-              </h3>
-              <div className="space-y-3">
-                <div className="space-y-3">
-                  <label className="text-xs text-muted-foreground mb-1 block">Text Color</label>
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <input
-                        type="color"
-                        value={videoSettings.textColor}
-                        onChange={(e) => updateSettings({ textColor: e.target.value })}
-                        className="w-12 h-8 rounded-sm border border-border bg-transparent cursor-pointer overflow-hidden opacity-0 absolute inset-0"
-                      />
-                      <div
-                        className="w-12 h-8 rounded-sm border border-border cursor-pointer transition-all duration-200 hover:scale-105 hover:border-primary/50"
-                        style={{ backgroundColor: videoSettings.textColor }}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <Input
-                        type="text"
-                        value={videoSettings.textColor}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          if (/^#[0-9A-Fa-f]{0,6}$/.test(value) || value === '') {
-                            updateSettings({ textColor: value })
-                          }
-                        }}
-                        onBlur={(e) => {
-                          let value = e.target.value
-                          if (value && !value.startsWith('#')) value = '#' + value
-                          if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-                            updateSettings({ textColor: value })
-                          } else if (value.length > 0) {
-                            updateSettings({ textColor: videoSettings.textColor })
-                          }
-                        }}
-                        className="w-full h-8 px-2 py-1.5 border border-border rounded-sm bg-background/50 focus:outline-none hover:border-primary/50 focus:border-primary/70 ring-0 focus-visible:ring-0 focus:ring-0 text-foreground transition-all duration-200"
-                        placeholder="#ffffff"
-                        maxLength={7}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="">
-                  <label className="text-xs text-muted-foreground mb-1 block">Highlight Color</label>
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <input
-                        type="color"
-                        value={videoSettings.highlightWordColor}
-                        onChange={(e) => updateSettings({ highlightWordColor: e.target.value })}
-                        className="w-12 h-8 rounded-sm border border-border bg-transparent cursor-pointer overflow-hidden opacity-0 absolute inset-0"
-                      />
-                      <div
-                        className="w-12 h-8 rounded-sm border border-border cursor-pointer transition-all duration-200 hover:scale-105 hover:border-primary/50"
-                        style={{ backgroundColor: videoSettings.highlightWordColor }}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <Input
-                        type="text"
-                        value={videoSettings.highlightWordColor}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          if (/^#[0-9A-Fa-f]{0,6}$/.test(value) || value === '') {
-                            updateSettings({ highlightWordColor: value })
-                          }
-                        }}
-                        onBlur={(e) => {
-                          let value = e.target.value
-                          if (value && !value.startsWith('#')) value = '#' + value
-                          if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-                            updateSettings({ highlightWordColor: value })
-                          } else if (value.length > 0) {
-                            updateSettings({ highlightWordColor: videoSettings.highlightWordColor })
-                          }
-                        }}
-                        className="w-full h-8 px-2 py-1.5 border border-border rounded-sm bg-background/50 focus:outline-none hover:border-primary/50 focus:border-primary/70 ring-0 focus-visible:ring-0 focus:ring-0 text-foreground transition-all duration-200"
-                        placeholder="#ffffff"
-                        maxLength={7}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="">
-                  <label className="text-xs text-muted-foreground mb-1 block">Outline Color</label>
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <input
-                        type="color"
-                        value={videoSettings.outlineColor}
-                        onChange={(e) => updateSettings({ outlineColor: e.target.value })}
-                        className="w-12 h-8 rounded-sm border border-border bg-transparent cursor-pointer overflow-hidden opacity-0 absolute inset-0"
-                      />
-                      <div
-                        className="w-12 h-8 rounded-sm border border-border cursor-pointer transition-all duration-200 hover:scale-105 hover:border-primary/50"
-                        style={{ backgroundColor: videoSettings.outlineColor }}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <Input
-                        type="text"
-                        value={videoSettings.outlineColor}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          if (/^#[0-9A-Fa-f]{0,6}$/.test(value) || value === '') {
-                            updateSettings({ outlineColor: value })
-                          }
-                        }}
-                        onBlur={(e) => {
-                          let value = e.target.value
-                          if (value && !value.startsWith('#')) value = '#' + value
-                          if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-                            updateSettings({ outlineColor: value })
-                          } else if (value.length > 0) {
-                            updateSettings({ outlineColor: videoSettings.outlineColor })
-                          }
-                        }}
-                        className="w-full h-8 px-2 py-1.5 border border-border rounded-sm bg-background/50 focus:outline-none hover:border-primary/50 focus:border-primary/70 ring-0 focus-visible:ring-0 focus:ring-0 text-foreground transition-all duration-200"
-                        placeholder="#ffffff"
-                        maxLength={7}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Export Formats */}
-            <div className="p-4">
-              <div>
-                <h3 className="text-base font-medium text-foreground mb-3 flex items-center gap-2">
-                  <Download className="w-4 h-4" />
-                  Export Formats
-                </h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {availableExportFormats.map((format) => (
-                    <div
-                      key={format.id}
-                      className={cn(
-                        'p-2 rounded-sm border text-center cursor-pointer transition-all duration-200 text-xs',
-                        videoSettings.exportFormats?.includes(format.id)
-                          ? 'border-primary/70 text-primary'
-                          : 'border-border/50 text-muted-foreground hover:border-primary/50'
-                      )}
-                      onClick={() => handleExportFormatToggle(format.id)}
-                    >
-                      {format.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Download Models */}
-            <div className="p-4 border-b border-border/50">
-              <ModelDownloader
-                selectedModel={videoSettings.selectedModel}
-                onSelectModel={(model: ModelInfo['name']) => updateSettings({ selectedModel: model })}
-                apiKey={apiKey}
-                onOpenApiKeySettings={() => setIsApiKeySettingsOpen(true)}
-              />
-            </div>
-          </div>
-        </div>
-        {/* Upload sectino */}
+        <Sidebar
+          templates={templates}
+          settings={videoSettings}
+          apiKey={apiKey}
+          isApiKeySettingsOpen={isApiKeySettingsOpen}
+          onSelectTemplate={selectTemplate}
+          onUpdateSettings={updateSettings}
+          onToggleExportFormat={handleExportFormatToggle}
+          onSaveApiKey={handleSaveApiKey}
+          onOpenApiKeySettings={() => setIsApiKeySettingsOpen(true)}
+          onCloseApiKeySettings={setIsApiKeySettingsOpen}
+        />
 
         <div className="relative flex-1 flex flex-col">
           <div className="relative flex-1 overflow-y-auto scrollbar-hide pb-28">
-            {selectedVideos.length === 0 && (
-              <div className="h-full px-8 pt-6">
-                <div
-                  className={cn(
-                    'group max-w-2xl mx-auto relative h-full flex flex-col items-center justify-center p-12 rounded-2xl border-2 border-dashed transition-all duration-300 cursor-pointer',
-                    'hover:border-primary/70 hover:bg-primary/5',
-                    isDragOver ? 'border-primary bg-primary/10 scale-[1.01]' : 'border-border/50 bg-card/30'
-                  )}
-                  onClick={handleVideoSelect}
-                >
-                  <div className="flex flex-col items-center justify-center h-full">
-                    <div className="p-5 rounded-2xl bg-primary inline-flex mb-4">
-                      <Upload className="w-8 h-8 text-primary-foreground" />
-                    </div>
-                    <h2 className="text-2xl font-medium text-foreground mb-2">Upload your videos</h2>
-                    <p className="text-muted-foreground mb-4">Click to select or drag and drop files</p>
-                    <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                      <span>Supported:</span>
-                      {['MP4', 'MOV', 'MKV', 'AVI'].map((format) => (
-                        <span key={format} className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">
-                          {format}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {selectedVideos.length > 0 && (
-              <div className="flex justify-center w-full px-8 mx-auto">
-                <div className="space-y-4 w-full max-w-2xl">
-                  <div className="flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-xs z-10 rounded-lg py-2 pt-6">
-                    <h3 className="text-lg font-medium text-foreground flex items-center gap-2">Uploaded files</h3>
-                    <div className="flex items-center gap-2">
-                      {selectedVideos.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedVideos([])}
-                          className="text-muted-foreground hover:text-foreground text-xs"
-                        >
-                          Clear all
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div
-                    className={cn(
-                      'grid gap-3',
-                      selectedVideos.length <= 4 ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
-                    )}
-                  >
-                    {selectedVideos.map((path, index) => (
-                      <FileCard
-                        key={index}
-                        path={path}
-                        onRemove={() => setSelectedVideos((prev) => prev.filter((p) => p !== path))}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
+            {selectedVideos.length === 0 ? (
+              <UploadArea isDragOver={isDragOver} onSelect={handleVideoSelect} />
+            ) : (
+              <VideoList
+                videos={selectedVideos}
+                progressMap={progressMap}
+                onRemove={(path) => setSelectedVideos((prev) => prev.filter((p) => p !== path))}
+                onClearAll={() => setSelectedVideos([])}
+              />
             )}
           </div>
 

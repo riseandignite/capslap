@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Download } from 'lucide-react'
+import { Download, Trash } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { ModelInfo, WhisperModel } from '@/lib/preload'
 
@@ -79,6 +79,37 @@ export function ModelDownloader({
     onSelectModel(model.name)
   }
 
+  const handleDelete = async (modelName: WhisperModel, e: React.MouseEvent) => {
+    e.stopPropagation()
+
+    // Check if model is currently selected
+    if (selectedModel === modelName) {
+      const confirmed = window.confirm(
+        `The ${modelName} model is currently selected. Deleting it will switch to the whisper-1 model. Continue?`
+      )
+      if (!confirmed) return
+    } else {
+      const confirmed = window.confirm(
+        `Are you sure you want to delete the ${modelName} model? This will free up disk space but you'll need to download it again to use it.`
+      )
+      if (!confirmed) return
+    }
+
+    try {
+      await window.rust.deleteModel(modelName)
+      setModels((prev) => prev.map((m) => (m.name === modelName ? { ...m, downloaded: false } : m)))
+      
+      // If deleted model was selected, switch to whisper-1
+      if (selectedModel === modelName) {
+        onSelectModel('whisper-1')
+      }
+      
+      toast.success(`${modelName} model deleted successfully`)
+    } catch (error: any) {
+      toast.error(`Failed to delete ${modelName} model: ${error.message || 'Unknown error'}`)
+    }
+  }
+
   return (
     <TooltipProvider delayDuration={200}>
       <div>
@@ -134,12 +165,25 @@ export function ModelDownloader({
                       </div>
                     )}
 
-                    {!canSelect && !isDownloading && (
-                      <div
-                        onClick={(e) => handleDownload(model.name, e)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-primary"
-                      >
-                        <Download className="w-4 h-4 text-muted-foreground hover:text-primary transition-colors" />
+                    {!isDownloading && (
+                      <div className="flex items-center gap-2">
+                        {model.downloaded && model.name !== 'whisper-1' && (
+                          <div
+                            onClick={(e) => handleDelete(model.name as WhisperModel, e)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-destructive"
+                            title={`Delete ${model.name} model`}
+                          >
+                            <Trash className="w-4 h-4 text-muted-foreground hover:text-destructive transition-colors" />
+                          </div>
+                        )}
+                        {!canSelect && (
+                          <div
+                            onClick={(e) => handleDownload(model.name as WhisperModel, e)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-primary"
+                          >
+                            <Download className="w-4 h-4 text-muted-foreground hover:text-primary transition-colors" />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

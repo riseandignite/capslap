@@ -690,6 +690,53 @@ pub fn check_model_exists(model_name: &str) -> anyhow::Result<bool> {
     Ok(model_path.exists())
 }
 
+/// Public RPC method to delete a whisper model
+pub async fn delete_model_rpc(
+    id: &str,
+    params: crate::types::DeleteModelParams,
+    mut emit: impl FnMut(crate::rpc::RpcEvent)
+) -> anyhow::Result<crate::types::DeleteModelResult> {
+    let model_filename = match params.model.as_str() {
+        "tiny" => "ggml-tiny.bin",
+        "base" => "ggml-base.bin",
+        "small" => "ggml-small.bin",
+        "medium" => "ggml-medium.bin",
+        "large" => "ggml-large-v3.bin",
+        _ => return Err(anyhow::anyhow!("Unknown model: {}. Supported: tiny, base, small, medium, large", params.model))
+    };
+
+    let models_dir = get_models_dir()
+        .map_err(|e| anyhow::anyhow!("Cannot access models directory: {}. Please check app permissions.", e))?;
+    let model_path = models_dir.join(model_filename);
+
+    // Safety check: ensure the path is within the models directory
+    if !model_path.starts_with(&models_dir) {
+        return Err(anyhow::anyhow!("Invalid model path: security check failed"));
+    }
+
+    if !model_path.exists() {
+        return Err(anyhow::anyhow!("Model {} does not exist at {}", params.model, model_path.display()));
+    }
+
+    emit(crate::rpc::RpcEvent::Log {
+        id: id.into(),
+        message: format!("Deleting {} model from {}", params.model, model_path.display())
+    });
+
+    tokio::fs::remove_file(&model_path).await
+        .map_err(|e| anyhow::anyhow!("Failed to delete model file at {}: {}. Check app permissions.", model_path.display(), e))?;
+
+    emit(crate::rpc::RpcEvent::Log {
+        id: id.into(),
+        message: format!("Successfully deleted {} model", params.model)
+    });
+
+    Ok(crate::types::DeleteModelResult {
+        model: params.model,
+        path: model_path.to_string_lossy().to_string(),
+    })
+}
+
 /// Get the models directory path
 fn get_models_dir() -> anyhow::Result<std::path::PathBuf> {
     // Priority 1: Check if we're in development (project exists)

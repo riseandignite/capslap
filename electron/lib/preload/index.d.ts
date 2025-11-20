@@ -31,6 +31,7 @@ declare global {
       getFilePath: (file: File) => string | null
       downloadModel: (model: WhisperModel) => Promise<DownloadModelResult>
       checkModelExists: (model: WhisperModel) => Promise<boolean>
+      deleteModel: (model: WhisperModel) => Promise<void>
     }
   }
 }

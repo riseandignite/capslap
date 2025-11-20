@@ -161,3 +161,16 @@ pub struct DownloadModelResult {
     pub path: String,                     // Path where model was saved
     pub size: u64,                        // Downloaded file size in bytes
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteModelParams {
+    pub model: String,                    // Model name: "tiny", "base", "small", "medium", "large"
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteModelResult {
+    pub model: String,                    // Model name that was deleted
+    pub path: String,                     // Path where model was deleted from
+}

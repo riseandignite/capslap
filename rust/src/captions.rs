@@ -20,13 +20,46 @@ pub async fn generate_captions_single_pass(
     mut emit: impl FnMut(RpcEvent)
 ) -> Result<GenerateCaptionsResult> {
 
+    // Progress ranges for each step (0.0 to 1.0 overall)
+    const PROBE_START: f32 = 0.0;
+    const PROBE_END: f32 = 0.05;      // 0-5%
+    const AUDIO_START: f32 = 0.05;
+    const AUDIO_END: f32 = 0.15;      // 5-15%
+    const TRANSCRIBE_START: f32 = 0.15;
+    const TRANSCRIBE_END: f32 = 0.65; // 15-65% (longest step)
+    const ENCODE_START: f32 = 0.65;
+    const ENCODE_END: f32 = 1.0;      // 65-100%
+
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Starting...".into(),
+        progress: PROBE_START,
+    });
+
     let temp_dir = std::env::temp_dir().join(format!("capslap_captions_{}", id));
     if let Err(e) = fs::create_dir_all(&temp_dir) {
         return Err(anyhow!("Failed to create temp directory: {}", e));
     }
 
+    // Step 1: Probe (0-5%)
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Analyzing video...".into(),
+        progress: PROBE_START,
+    });
     let probe_result = probe(id, &params.input_video, &mut emit).await?;
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Video analyzed".into(),
+        progress: PROBE_END,
+    });
 
+    // Step 2: Extract audio (5-15%)
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Extracting audio...".into(),
+        progress: AUDIO_START,
+    });
     let audio_filename = format!("audio_{}.mp3", id);
     let temp_audio_path = temp_dir.join(&audio_filename);
     let audio_params = ExtractAudioParams {
@@ -35,8 +68,18 @@ pub async fn generate_captions_single_pass(
         out: Some(temp_audio_path.to_string_lossy().to_string()),
     };
     let audio_result = audio::extract_audio(id, audio_params, &mut emit).await?;
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Audio extracted".into(),
+        progress: AUDIO_END,
+    });
 
-
+    // Step 3: Transcribe (15-65%)
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Transcribing audio...".into(),
+        progress: TRANSCRIBE_START,
+    });
     let transcribe_params = TranscribeSegmentsParams {
         audio: audio_result.audio.clone(),
         model: params.model,
@@ -47,7 +90,18 @@ pub async fn generate_captions_single_pass(
         video_file: Some(params.input_video.clone()),
     };
     let transcription = whisper::transcribe_segments_with_temp(id, transcribe_params, Some(&temp_dir), &mut emit).await?;
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Transcription complete".into(),
+        progress: TRANSCRIBE_END,
+    });
 
+    // Step 4: Encode videos (65-100%)
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Encoding videos...".into(),
+        progress: ENCODE_START,
+    });
     let captioned_videos = optimized_multi_format_encode(
         id,
         &params.input_video,
@@ -64,6 +118,11 @@ pub async fn generate_captions_single_pass(
         params.position,
         &mut emit
     ).await?;
+    emit(RpcEvent::Progress {
+        id: id.into(),
+        status: "Complete".into(),
+        progress: ENCODE_END,
+    });
 
     Ok(GenerateCaptionsResult {
         probe_result,
@@ -89,6 +148,9 @@ async fn optimized_multi_format_encode(
     position: Option<String>,
     emit: &mut impl FnMut(RpcEvent)
 ) -> Result<Vec<CaptionedVideoResult>> {
+    // Progress ranges for encoding step (65-100% overall)
+    const ENCODE_START: f32 = 0.65;
+    const ENCODE_END: f32 = 1.0;
     if export_formats.is_empty() {
         return Err(anyhow!("No export formats specified"));
     }
@@ -169,10 +231,20 @@ async fn optimized_multi_format_encode(
     }
 
     // Wait for all tasks to complete and collect results
+    let total_formats = tasks.len();
     let mut captioned_videos = Vec::new();
     for (idx, task) in tasks.into_iter().enumerate() {
         let result = task.await.map_err(|e| anyhow!("Concurrent task failed: {}", e))??;
         captioned_videos.push(result);
+        
+        // Emit progress for encoding step (65-100% overall)
+        // Each format completion moves us forward in the encoding range
+        let encode_progress = ENCODE_START + ((idx + 1) as f32 / total_formats as f32) * (ENCODE_END - ENCODE_START);
+        emit(RpcEvent::Progress {
+            id: id.into(),
+            status: format!("Encoding format {}/{}...", idx + 1, total_formats),
+            progress: encode_progress.min(ENCODE_END),
+        });
     }
 
     Ok(captioned_videos)

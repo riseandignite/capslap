@@ -42,6 +42,12 @@ const rust = {
       params: model
     })
   },
+  deleteModel: (model: string) => {
+    return ipcRenderer.invoke('core:call', {
+      method: 'deleteModel',
+      params: { model }
+    })
+  },
 }
 
 export default api

@@ -6,3 +6,4 @@ alwaysApply: false
 
 - we use bun, shadcn, tailwind, react, typescript, vite, etc.
 - we use linear.app design aesthetic: best in the world ux, modern, clean, minimal, etc.
+- whenever you change in any files in rust folder run this command `cargo build`

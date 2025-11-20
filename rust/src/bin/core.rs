@@ -76,6 +76,13 @@ async fn handle_request(r: RpcRequest) {
                 Err(e) => write_err(e.to_string()),
             }
         }
+        "deleteModel" => {
+            let p: core::types::DeleteModelParams = serde_json::from_value(r.params).unwrap();
+            match core::whisper::delete_model_rpc(&id, p, &mut emit).await {
+                Ok(v) => write_ok(serde_json::to_value(v).unwrap()),
+                Err(e) => write_err(e.to_string()),
+            }
+        }
         _ => write_err("Unknown method".into()),
     }
 }

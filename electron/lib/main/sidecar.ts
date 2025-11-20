@@ -10,7 +10,7 @@ export class Sidecar {
   private proc: ReturnType<typeof spawn> | null = null
   private rl: readline.Interface | null = null
   private pending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>()
-  private progressCb: ((p: Progress) => void) | null = null
+  private progressCallbacks = new Map<string, (p: Progress) => void>()
   private writeLock = Promise.resolve()
 
   constructor() {
@@ -96,20 +96,27 @@ export class Sidecar {
         console.log('[SIDECAR] Raw response:', line)
         const msg = JSON.parse(line)
 
-        if (msg.event === 'progress' && this.progressCb) {
+        if (msg.event === 'progress' && msg.id) {
           console.log('[SIDECAR] Progress event:', msg)
-          this.progressCb(msg)
+          const callback = this.progressCallbacks.get(msg.id)
+          if (callback) {
+            callback(msg)
+          }
           return
         }
         if (msg.result !== undefined && msg.id) {
           console.log('[SIDECAR] Success response for:', msg.id, msg.result)
           this.pending.get(msg.id)?.resolve(msg.result)
           this.pending.delete(msg.id)
+          // Clean up progress callback
+          this.progressCallbacks.delete(msg.id)
         } else if (msg.error && msg.id) {
           console.log('[SIDECAR] Error response for:', msg.id, msg.error)
           const friendlyError = this.createFriendlyError(msg.error)
           this.pending.get(msg.id)?.reject(friendlyError)
           this.pending.delete(msg.id)
+          // Clean up progress callback
+          this.progressCallbacks.delete(msg.id)
         }
       } catch (err) {
         console.error('[SIDECAR] Failed to parse response:', line, err)
@@ -194,7 +201,9 @@ export class Sidecar {
     const id = randomUUID()
     console.log('[SIDECAR] Calling method:', method, 'with params:', params, 'id:', id)
 
-    if (onProgress) this.progressCb = onProgress
+    if (onProgress) {
+      this.progressCallbacks.set(id, onProgress)
+    }
     const req = JSON.stringify({ id, method, params }) + '\n'
 
     return new Promise((resolve, reject) => {
@@ -204,6 +213,7 @@ export class Sidecar {
       this.writeWithLock(req).catch((err) => {
         console.error('[SIDECAR] Failed to write to process:', err)
         this.pending.delete(id)
+        this.progressCallbacks.delete(id)
         reject(err)
       })
     })

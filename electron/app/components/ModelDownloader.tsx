@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Download } from 'lucide-react'
+import { Download, Loader2 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { ModelInfo, WhisperModel } from '@/lib/preload'
 
@@ -11,6 +11,7 @@ const MODEL_INFO: ModelInfo[] = [
   { name: 'small', size: '488 MB', downloaded: false },
   { name: 'medium', size: '1.5 GB', downloaded: false },
   { name: 'large', size: '3.1 GB', downloaded: false },
+  { name: 'turbo', size: '1.6 GB', downloaded: false },
 ]
 
 export function ModelDownloader({
@@ -46,7 +47,13 @@ export function ModelDownloader({
     checkModels()
 
     const unsubscribe = window.rust.onProgress((event: any) => {
-      if (event.event === 'progress') {
+      // Only react to model-download progress. The progress channel is shared
+      // with transcription/export jobs — those must not move our progress bar.
+      if (
+        event.event === 'progress' &&
+        typeof event.status === 'string' &&
+        event.status.toLowerCase().includes('download')
+      ) {
         setProgress(Math.round(event.progress * 100))
       }
     })
@@ -123,9 +130,12 @@ export function ModelDownloader({
                     </div>
 
                     {isDownloading && (
-                      <div className="w-32">
-                        <div className="text-[10px] text-center mb-1 font-medium text-foreground">{progress}%</div>
-                        <div className="h-1.5 bg-secondary/50 rounded-full overflow-hidden">
+                      <div className="w-32 flex flex-col items-end gap-1">
+                        <div className="text-[10px] flex items-center gap-1 font-medium text-foreground">
+                          <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                          <span>{progress}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-secondary/50 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-primary rounded-full transition-all duration-300"
                             style={{ width: `${progress}%` }}

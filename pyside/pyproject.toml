@@ -1,0 +1,36 @@
+[project]
+name = "pycapslap"
+version = "0.1.0"
+description = "Snappy, native video captioning and AI transcription desktop app"
+readme = "README.md"
+authors = [
+    { name = "Olli Sulopuisto", email = "1051255+ollisulopuisto@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=46",
+    # Pure-Python ctypes wrapper. Spell checking stays silently off until the
+    # native library is installed too (macOS: brew install libvoikko).
+    "libvoikko>=4.3",
+    "psutil>=7.2.2",
+    "pyside6>=6.11.2",
+    "pytest>=9.1.1",
+    "pytest-qt>=4.5.0",
+]
+
+[project.scripts]
+pycapslap = "pycapslap:main"
+
+[build-system]
+requires = ["uv_build>=0.12.12,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest-timeout>=2.4.0",
+    "ruff>=0.16.7",
+]
+

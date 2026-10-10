@@ -1,0 +1,17 @@
+# The portal itself. Build the image first, from the repository root:
+#   podman build -f portal/Dockerfile -t localhost/capslap-portal:latest .
+[Unit]
+Description=PyCapSlap review portal
+
+[Container]
+Image=localhost/capslap-portal:latest
+ContainerName=capslap-portal
+EnvironmentFile=%h/.config/capslap-portal/portal.env
+Network=capslap.network
+Volume=capslap-portal-data.volume:/data
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

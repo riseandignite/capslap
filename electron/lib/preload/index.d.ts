@@ -2,7 +2,7 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type api from './api'
 
 // Whisper model types
-export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'whisper-1'
+export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'turbo' | 'whisper-1'
 
 export interface ModelInfo {
   name: WhisperModel | 'whisper-1'
@@ -26,7 +26,8 @@ declare global {
     api: typeof api
     rust: {
       openFiles: (filters?: any) => Promise<string[] | null>
-      call: (method: string, params: any) => Promise<any>
+      filesExist: (paths: string[]) => Promise<boolean[]>
+      call: (method: string, params: any, requestId?: string) => Promise<any>
       onProgress: (cb: (p: any) => void) => () => void
       getFilePath: (file: File) => string | null
       downloadModel: (model: WhisperModel) => Promise<DownloadModelResult>

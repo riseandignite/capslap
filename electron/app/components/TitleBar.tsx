@@ -1,5 +1,3 @@
-import React from 'react'
-
 export function TitleBar() {
   const maximize = () => window.electron?.ipcRenderer.invoke('window-maximize-toggle')
 

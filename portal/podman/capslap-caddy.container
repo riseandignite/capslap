@@ -1,0 +1,21 @@
+# Caddy in front of the portal; it fetches and renews the HTTPS certificate.
+[Unit]
+Description=Caddy for the PyCapSlap review portal
+Requires=capslap-portal.service
+After=capslap-portal.service
+
+[Container]
+Image=docker.io/library/caddy:2
+ContainerName=capslap-caddy
+EnvironmentFile=%h/.config/capslap-portal/portal.env
+Network=capslap.network
+PublishPort=80:80
+PublishPort=443:443
+Volume=%h/.config/capslap-portal/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+Volume=capslap-caddy-data.volume:/data
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

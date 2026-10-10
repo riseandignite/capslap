@@ -1,0 +1,29 @@
+# The portal behind Caddy, which fetches and renews the HTTPS certificate.
+# From the repository root:
+#   PORTAL_DOMAIN=review.example.com PORTAL_ADMIN_TOKEN=... \
+#     podman compose -f portal/compose.yaml up -d   (or docker compose)
+# On a server, portal/podman/ runs the same thing as systemd services.
+services:
+  portal:
+    build:
+      context: ..
+      dockerfile: portal/Dockerfile
+    environment:
+      PORTAL_ADMIN_TOKEN: ${PORTAL_ADMIN_TOKEN:?set PORTAL_ADMIN_TOKEN}
+    volumes:
+      - portal-data:/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    command: caddy reverse-proxy --from ${PORTAL_DOMAIN:?set PORTAL_DOMAIN} --to portal:8080
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+    restart: unless-stopped
+
+volumes:
+  portal-data:
+  caddy-data:

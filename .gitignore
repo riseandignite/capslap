@@ -5,5 +5,46 @@ rust/models/*.bin
 
 rust/bin/ffmpeg
 rust/bin/ffprobe
+rust/bin/whisper-cli*
+rust/bin/lib/**
+# whisper-cli's @rpath entries need exactly these files at runtime (see
+# `otool -L rust/bin/whisper-cli-macos-arm64`); everything else under
+# rust/bin/lib/ (dirty/coreml/versioned build byproducts) stays ignored.
+!rust/bin/lib/
+!rust/bin/lib/libinternal/
+!rust/bin/lib/libinternal/libwhisper.1.dylib
+!rust/bin/lib/libinternal/libggml.0.dylib
+!rust/bin/lib/libinternal/libggml-cpu.0.dylib
+!rust/bin/lib/libinternal/libggml-blas.0.dylib
+!rust/bin/lib/libinternal/libggml-metal.0.dylib
+!rust/bin/lib/libinternal/libggml-base.0.dylib
+rust/bin-win/
+rust/bin-linux/
 .DS_Store
 rust/bin/lib/libinternal/cmake/
+rust/deps/
+rust/target/
+rust/bin/test_input.mp4
+rust/bin/test_input_*.mp4
+rust/bin/*.capslap.json
+*.dirty.dylib
+*.coreml.dylib
+*.1.8.2.dylib
+electron/out/
+electron/dist/
+dist/
+# PyInstaller intermediates (pyside/build/pycapslap/*.toc, warn/xref files)
+build/
+node_modules/
+electron/package-lock.json
+*.tsbuildinfo
+rust/check_output.txt
+*.bak
+*~
+*.backup
+*.swp
+.venv/
+__pycache__/
+*.pyc
+Näyttökuva*.png
+portal/data/

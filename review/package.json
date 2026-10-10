@@ -1,0 +1,9 @@
+{
+  "name": "capslap-review",
+  "private": true,
+  "type": "module",
+  "description": "Caption review page for PyCapSlap: static, no build step, no dependencies.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

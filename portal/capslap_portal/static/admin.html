@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Videoiden hyväksyntä · admin</title>
+    <link rel="stylesheet" href="/static/portal.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%234f46e5'/%3E%3Crect x='3' y='10' width='10' height='2' rx='1' fill='white'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="top">
+      <h1>Videoiden hyväksyntä</h1>
+      <button class="link" id="sign-out" hidden>Sign out</button>
+    </header>
+    <main class="wrap">
+      <form id="sign-in" class="feedback" hidden>
+        <label for="token">Admin token (PORTAL_ADMIN_TOKEN)</label>
+        <input id="token" type="password" autocomplete="current-password" required />
+        <div class="actions"><button class="primary" type="submit">Sign in</button></div>
+      </form>
+      <div class="admin" id="admin" hidden>
+        <nav>
+          <ul class="list" id="series-list"></ul>
+          <form id="new-series" class="actions" style="margin-top: 12px">
+            <input class="field" id="new-series-title" placeholder="New series" required />
+            <button type="submit">Add</button>
+          </form>
+        </nav>
+        <section id="detail"></section>
+      </div>
+      <p class="error" id="error" role="alert"></p>
+    </main>
+    <script type="module" src="/static/admin.js"></script>
+  </body>
+</html>

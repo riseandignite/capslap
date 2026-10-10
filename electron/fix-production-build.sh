@@ -16,11 +16,6 @@ if [ -f "../rust/target/release/core" ]; then
     cp ../rust/target/release/core dist/mac-arm64/CapSlap.app/Contents/Resources/core
 fi
 
-# Optional: Copy pre-downloaded models if they exist
-if [ -f "../rust/models/ggml-tiny.bin" ]; then
-    echo "Copying tiny model to production builds..."
-    cp ../rust/models/ggml-tiny.bin dist/mac/CapSlap.app/Contents/Resources/models/
-    cp ../rust/models/ggml-tiny.bin dist/mac-arm64/CapSlap.app/Contents/Resources/models/
-fi
-
+# We don't bundle models by default to keep binary size small.
+# The app will download them to this directory on demand.
 echo "Production build fix completed!"

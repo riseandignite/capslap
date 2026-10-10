@@ -1,0 +1,8 @@
+# The only image built here is the review portal (portal/Dockerfile); it
+# needs portal/ and the caption review page, nothing else.
+*
+!portal/
+!review/
+portal/.venv
+portal/data
+**/__pycache__

@@ -1,0 +1,4 @@
+# {$PORTAL_DOMAIN} comes from portal.env.
+{$PORTAL_DOMAIN} {
+	reverse_proxy capslap-portal:8080
+}

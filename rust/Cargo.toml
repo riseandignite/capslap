@@ -16,8 +16,15 @@ blake3 = "1"
 time = "0.3"
 reqwest = { version = "0.12", features = ["json", "multipart", "gzip", "brotli", "deflate", "stream", "rustls-tls"] }
 futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
 mime_guess = "2"
 which = "8.0.0"
 hex_color = "3.0.0"
 image = "0.25"
 base64 = "0.22"
+ttf-parser = "0.25.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

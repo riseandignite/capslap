@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <filter id="icon-shadow" x="-15%" y="-10%" width="130%" height="135%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000000" flood-opacity="0.38"/>
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <linearGradient id="frame-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#222734"/>
+      <stop offset="50%" stop-color="#191d26"/>
+      <stop offset="100%" stop-color="#12141c"/>
+    </linearGradient>
+    <linearGradient id="frame-rim" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#444d64"/>
+      <stop offset="40%" stop-color="#2a3040"/>
+      <stop offset="100%" stop-color="#141720"/>
+    </linearGradient>
+    <linearGradient id="inner-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#12141a"/>
+      <stop offset="100%" stop-color="#0a0b0e"/>
+    </linearGradient>
+    <linearGradient id="clapper-yellow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe057"/>
+      <stop offset="100%" stop-color="#ffd43b"/>
+    </linearGradient>
+    <linearGradient id="play-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#387ab5"/>
+      <stop offset="50%" stop-color="#306998"/>
+      <stop offset="100%" stop-color="#285880"/>
+    </linearGradient>
+    <linearGradient id="play-highlight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.15"/>
+    </linearGradient>
+    <linearGradient id="pill-yellow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe057"/>
+      <stop offset="100%" stop-color="#ffd43b"/>
+    </linearGradient>
+    <linearGradient id="pill-grey" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7b8a9f"/>
+      <stop offset="100%" stop-color="#707e94"/>
+    </linearGradient>
+    <clipPath id="clapper-clip">
+      <rect x="186" y="170" width="652" height="138" rx="24" ry="24"/>
+    </clipPath>
+  </defs>
+
+  <!-- Outer Frame Squircle with Drop Shadow -->
+  <rect x="100" y="80" width="824" height="824" rx="185" ry="185"
+        fill="url(#frame-bg)" stroke="url(#frame-rim)" stroke-width="2.5"
+        filter="url(#icon-shadow)" />
+
+  <!-- Inner Recessed Display Canvas -->
+  <rect x="138" y="118" width="748" height="748" rx="156" ry="156"
+        fill="url(#inner-bg)" stroke="#151820" stroke-width="2" />
+
+  <!-- Film Clapperboard Header (Top) -->
+  <g clip-path="url(#clapper-clip)">
+    <rect x="186" y="170" width="652" height="138" fill="url(#clapper-yellow)"/>
+    <!-- Diagonal Hazard Stripes -->
+    <path d="
+      M 116 165 L 160 165 L 210 313 L 166 313 Z
+      M 198 165 L 242 165 L 292 313 L 248 313 Z
+      M 280 165 L 324 165 L 374 313 L 330 313 Z
+      M 362 165 L 406 165 L 456 313 L 412 313 Z
+      M 444 165 L 488 165 L 538 313 L 494 313 Z
+      M 526 165 L 570 165 L 620 313 L 576 313 Z
+      M 608 165 L 652 165 L 702 313 L 658 313 Z
+      M 690 165 L 734 165 L 784 313 L 740 313 Z
+      M 772 165 L 816 165 L 866 313 L 822 313 Z
+      M 854 165 L 898 165 L 948 313 L 904 313 Z
+    " fill="#141720"/>
+    <!-- Top Highlight Sheen -->
+    <rect x="186" y="170" width="652" height="14" fill="#ffffff" opacity="0.22"/>
+  </g>
+  <rect x="186" y="170" width="652" height="138" rx="24" ry="24"
+        fill="none" stroke="#0a0b0e" stroke-width="2"/>
+
+  <!-- Play Button Triangle (Left - Python Blue) -->
+  <path d="M 324 478
+           L 434 564
+           Q 446 575 434 586
+           L 324 672
+           Q 312 672 312 660
+           L 312 490
+           Q 312 478 324 478 Z"
+        fill="url(#play-blue)" stroke="url(#play-highlight)" stroke-width="1.2"/>
+
+  <!-- Center Dotted Line -->
+  <g fill="#333b4d">
+    <circle cx="502" cy="478" r="3.25"/>
+    <circle cx="502" cy="494" r="3.25"/>
+    <circle cx="502" cy="510" r="3.25"/>
+    <circle cx="502" cy="526" r="3.25"/>
+    <circle cx="502" cy="542" r="3.25"/>
+    <circle cx="502" cy="558" r="3.25"/>
+    <circle cx="502" cy="574" r="3.25"/>
+    <circle cx="502" cy="590" r="3.25"/>
+    <circle cx="502" cy="606" r="3.25"/>
+    <circle cx="502" cy="622" r="3.25"/>
+    <circle cx="502" cy="638" r="3.25"/>
+    <circle cx="502" cy="654" r="3.25"/>
+    <circle cx="502" cy="670" r="3.25"/>
+  </g>
+
+  <!-- Caption Subtitle Pills (Right) -->
+  <!-- Pill 1 (Top Yellow) -->
+  <rect x="554" y="478" width="232" height="58" rx="29" ry="29"
+        fill="url(#pill-yellow)" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1.2"/>
+  <!-- Pill 2 (Middle Yellow) -->
+  <rect x="554" y="552" width="172" height="58" rx="29" ry="29"
+        fill="url(#pill-yellow)" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1.2"/>
+  <!-- Pill 3 (Bottom Slate Grey) -->
+  <rect x="554" y="626" width="114" height="50" rx="25" ry="25"
+        fill="url(#pill-grey)" stroke="#ffffff" stroke-opacity="0.18" stroke-width="1.2"/>
+</svg>

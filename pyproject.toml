@@ -1,0 +1,19 @@
+[tool.uv.workspace]
+members = ["pyside"]
+# The review portal is a separate server with its own lock (portal/uv.lock).
+exclude = ["portal"]
+
+[tool.pytest.ini_options]
+pythonpath = ["pyside"]
+testpaths = ["pyside/tests"]
+# Safety net, not just for CI: a couple of pytest-qt tests are known to hang
+# rather than fail (see test_main_window.py) — bound any test that does the
+# same so it shows up as a fast, visible failure instead.
+timeout = 120
+
+[tool.ruff]
+src = ["pyside"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E402"]

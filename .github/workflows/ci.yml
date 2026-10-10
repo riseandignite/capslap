@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  rust:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Rust lint
+        working-directory: rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Download bundled ffmpeg/ffprobe/whisper-cli
+        run: bash scripts/download-binaries.sh
+        env:
+          TARGET_OS: macOS
+
+      - name: Rust test
+        working-directory: rust
+        run: cargo test --release
+
+  pyside:
+    runs-on: macos-latest
+    # Backstop for the pytest step. The old hangs were modal message boxes
+    # (see CONTRIBUTING.md), now stubbed in tests/conftest.py; a blocked Qt
+    # event loop is something the per-test pytest-timeout (pyproject.toml)
+    # can't interrupt, so this stays as the guaranteed cut-off.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Build Rust core (needed by pyside tests that spawn it)
+        working-directory: rust
+        run: cargo build --release
+
+      - name: Download bundled ffmpeg/ffprobe/whisper-cli
+        run: bash scripts/download-binaries.sh
+        env:
+          TARGET_OS: macOS
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: pytest
+        run: uv run python -m pytest
+
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Review page tests
+        run: node --test review/*.test.js portal/capslap_portal/static/*.test.js
+
+  portal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Portal tests
+        working-directory: portal
+        run: uv sync && uv run pytest
+      - name: Portal image builds
+        run: docker build -f portal/Dockerfile -t capslap-portal .

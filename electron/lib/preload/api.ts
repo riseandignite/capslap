@@ -17,7 +17,9 @@ const api = {
 
 const rust = {
   openFiles: (filters?: any) => ipcRenderer.invoke('dialog:openFiles', { filters }),
-  call: (method: string, params: any) => ipcRenderer.invoke('core:call', { method, params }),
+  filesExist: (paths: string[]): Promise<boolean[]> => ipcRenderer.invoke('files:exist', paths),
+  call: (method: string, params: any, requestId?: string) =>
+    ipcRenderer.invoke('core:call', { method, params, requestId }),
   onProgress: (cb: (p: any) => void) => {
     const listener = (_: any, msg: any) => cb(msg)
     ipcRenderer.on('core:progress', listener)
@@ -33,13 +35,13 @@ const rust = {
   downloadModel: (model: string) => {
     return ipcRenderer.invoke('core:call', {
       method: 'downloadModel',
-      params: { model }
+      params: { model },
     })
   },
   checkModelExists: (model: string) => {
     return ipcRenderer.invoke('core:call', {
       method: 'checkModelExists',
-      params: model
+      params: model,
     })
   },
 }

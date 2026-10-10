@@ -1,0 +1,9 @@
+{
+  "format": "capslap-locked",
+  "formatVersion": 1,
+  "kdf": "PBKDF2-SHA256",
+  "iterations": 1000,
+  "salt": "11fziMGdst/flIHzuDDodQ==",
+  "iv": "fYna6VtYBoYMpLiM",
+  "data": "L3WboyZ55hcn/EOLuT+77qmy051o2Ovi7Qf0EHLYFbLRzsircu5hMvLMxNkdEV/hneu6rZ7KwvjLDiMGIrzaXsyyvuuCesrzLqwr86uaxWMIHAV5HUevpr6zjirwBsHjMrU4OFVWXw+XqxwSYRigsGRhLaBDK1LoAdWGGpYeriipLAi1dTbx8kCBQuI7mGA8ReBCVb8rG0KSqJtn4MOLYi+2RefMw/Q7nB1ffeMCsgmym8Ep6K41wncQp1iDWmUgHKRGnCbC7asbRYX6"
+}

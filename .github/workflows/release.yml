@@ -1,0 +1,91 @@
+name: Release
+
+# Builds the native PySide6 + Rust app (macOS arm64 only for now — that's
+# the only platform this app currently targets: whisper.cpp and ffmpeg are
+# bundled for macOS arm64, and rendering uses VideoToolbox hardware
+# encoding). Windows/Linux packaging is future work.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14 # Apple Silicon runner
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Build Rust core
+        working-directory: rust
+        run: cargo build --release
+
+      - name: Download bundled ffmpeg/ffprobe/whisper-cli
+        run: bash scripts/download-binaries.sh
+        env:
+          TARGET_OS: macOS
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Build PyCapSlap.app
+        working-directory: pyside
+        run: uv run --with pyinstaller pyinstaller pycapslap.spec --noconfirm
+
+      - name: Smoke-test the bundled core binary
+        run: |
+          CORE="pyside/dist/PyCapSlap.app/Contents/Frameworks/rust/target/release/core"
+          echo '{"id":"ci","method":"ping","params":{}}' | "$CORE" | grep -q '"ok":true'
+
+      - name: Zip app bundle
+        working-directory: pyside/dist
+        run: ditto -c -k --sequesterRsrc --keepParent PyCapSlap.app PyCapSlap-macos-arm64.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PyCapSlap-macos-arm64
+          path: pyside/dist/PyCapSlap-macos-arm64.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: PyCapSlap-macos-arm64
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          draft: false
+          body: |
+            macOS (Apple Silicon) build. Unsigned/ad-hoc — on first launch,
+            right-click the app and choose Open (or allow it in
+            System Settings > Privacy & Security) since it isn't notarized
+            by a paid Apple Developer account.
+
+            See CHANGELOG.md for what's in this release.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
